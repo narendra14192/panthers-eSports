@@ -1,0 +1,187 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: #050608;
+    background-image: 
+      radial-gradient(circle at 50% -10%, rgba(255, 77, 0, 0.14) 0%, transparent 60%),
+      radial-gradient(circle at 95% 85%, rgba(255, 184, 0, 0.06) 0%, transparent 45%),
+      radial-gradient(circle at 5% 45%, rgba(0, 240, 255, 0.04) 0%, transparent 40%),
+      linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+    background-attachment: fixed;
+    color: #F3F4F6;
+    overflow-x: hidden;
+  }
+
+  /* Custom high-tech scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #080A0F;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1F2739;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 184, 0, 0.15);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #FFB800;
+  }
+}
+
+@layer utilities {
+  /* Angular Cyber HUD Cards (Clawed / Chamfered corners) */
+  .clip-hud {
+    clip-path: polygon(
+      14px 0%, 
+      100% 0%, 
+      100% calc(100% - 14px), 
+      calc(100% - 14px) 100%, 
+      0% 100%, 
+      0% 14px
+    );
+  }
+
+  .clip-hud-sm {
+    clip-path: polygon(
+      8px 0%, 
+      100% 0%, 
+      100% calc(100% - 8px), 
+      calc(100% - 8px) 100%, 
+      0% 100%, 
+      0% 8px
+    );
+  }
+
+  .clip-corner-br {
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%);
+  }
+
+  .clip-corner-tl {
+    clip-path: polygon(16px 0, 100% 0, 100% 100%, 0 100%, 0 16px);
+  }
+
+  .clip-claw-badge {
+    clip-path: polygon(10px 0%, 100% 0%, calc(100% - 10px) 100%, 0% 100%);
+  }
+
+  /* Frosted Glass Titanium Panel */
+  .glass-panel {
+    background: rgba(13, 16, 23, 0.88);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  .glass-panel-subtle {
+    background: rgba(9, 11, 17, 0.75);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  /* Claw mark texture overlay */
+  .claw-scratch-bg {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 18px,
+      rgba(255, 77, 0, 0.04) 18px,
+      rgba(255, 77, 0, 0.04) 20px
+    );
+  }
+
+  /* Gradient Text Tokens */
+  .text-flame-gradient {
+    background: linear-gradient(135deg, #FFE873 0%, #FF6B1A 40%, #FF4500 75%, #D92B00 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .text-gold-gradient {
+    background: linear-gradient(135deg, #FFFDE7 0%, #FFD54F 40%, #FFB800 80%, #E59800 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .text-cyber-gradient {
+    background: linear-gradient(135deg, #E0F7FA 0%, #00F0FF 60%, #0284C7 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+/* Battle Royale HUD animations */
+@keyframes flame-pulse {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(255, 77, 0, 0.25);
+    border-color: rgba(255, 77, 0, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(255, 77, 0, 0.5), 0 0 8px rgba(255, 184, 0, 0.35);
+    border-color: #FFB800;
+  }
+}
+
+.animate-flame-pulse {
+  animation: flame-pulse 2.5s infinite ease-in-out;
+}
+
+@keyframes scanner-sweep {
+  0% { transform: translateY(-100%); opacity: 0; }
+  50% { opacity: 0.25; }
+  100% { transform: translateY(300%); opacity: 0; }
+}
+
+.animate-scanner {
+  animation: scanner-sweep 3s infinite linear;
+}
+
+/* Clean referee print layout */
+@media print {
+  body {
+    background: #FFF !important;
+    color: #000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  table {
+    border: 1px solid #000 !important;
+  }
+  th, td {
+    border: 1px solid #DDD !important;
+    color: #000 !important;
+  }
+}
+
+/* ── ChatBot Scrollbar Utilities ──────────────────────────────────────── */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.scrollbar-thumb-panther-700::-webkit-scrollbar-thumb {
+  background: #1F2739;
+  border-radius: 4px;
+}
+.scrollbar-track-transparent::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
