@@ -89,6 +89,14 @@ export const AdminPortal = ({ onExitToPublic }) => {
   const [inspectingTeam, setInspectingTeam] = useState(null);
   const [allottingSlotNum, setAllottingSlotNum] = useState(null);
   const [manualTeamSelect, setManualTeamSelect] = useState('');
+  const [allotTab, setAllotTab] = useState('new'); // 'new' | 'existing'
+  const [newSquadData, setNewSquadData] = useState({
+    name: '',
+    tag: '',
+    captain_name: '',
+    captain_uid: '',
+    captain_phone: '',
+  });
 
   // Room Credentials State
   const [roomId, setRoomId] = useState(activeTournament?.room_id || '');
@@ -112,11 +120,55 @@ export const AdminPortal = ({ onExitToPublic }) => {
 
   if (!activeTournament) return null;
 
-  // Filter tournament slots (strictly sorted by slot_number 1..12)
-  const tourneySlots = slots
-    .filter(s => s.tournament_id === activeTournament.id && s.slot_number <= (activeTournament.total_slots || 12))
-    .sort((a, b) => a.slot_number - b.slot_number);
   const totalSlotsCount = activeTournament.total_slots || 12;
+
+  // Unified slot matrix: merges slot state with real-time registrations
+  const tourneySlots = Array.from({ length: totalSlotsCount }, (_, idx) => {
+    const slotNum = idx + 1;
+    const baseSlot = slots.find(
+      s => s.tournament_id === activeTournament.id && s.slot_number === slotNum
+    ) || {
+      id: `slot-${activeTournament.id}-${slotNum}`,
+      tournament_id: activeTournament.id,
+      slot_number: slotNum,
+      team_id: null,
+      status: 'open',
+    };
+
+    // Find any registration matching this slot
+    const reg = (registrations || []).find(
+      r => (r.tournament_id === activeTournament.id || !r.tournament_id) && Number(r.slot_number) === slotNum
+    );
+
+    const team = baseSlot.team_id ? getTeamById(baseSlot.team_id) : (reg ? getTeamById(reg.team_id) : null);
+
+    // If registration exists and slot is open or pending
+    if (reg && (baseSlot.status === 'open' || !baseSlot.team_id)) {
+      return {
+        ...baseSlot,
+        team_id: reg.team_id || baseSlot.team_id,
+        status: reg.status === 'accepted' ? 'booked' : 'pending_verification',
+        registration: reg,
+        virtualTeam: team || {
+          id: reg.team_id,
+          name: reg.team_name,
+          tag: reg.team_tag || reg.team_name?.substring(0, 4).toUpperCase(),
+          captain_name: reg.captain_name,
+          captain_phone: reg.captain_phone,
+          captain_uid: reg.captain_uid,
+          players: reg.players || [],
+          payment: reg.payment,
+        }
+      };
+    }
+
+    return {
+      ...baseSlot,
+      registration: reg || null,
+      virtualTeam: team,
+    };
+  });
+
   const bookedSlots = tourneySlots.filter(s => s.status !== 'open');
   const checkedInSlots = tourneySlots.filter(s => s.status === 'checked_in');
   const openSlots = tourneySlots.filter(s => s.status === 'open');
@@ -234,16 +286,16 @@ export const AdminPortal = ({ onExitToPublic }) => {
   // Filter slots for search and status
   const filteredSlots = tourneySlots.filter(slot => {
     if (slotFilter === 'OPEN' && slot.status !== 'open') return false;
-    if (slotFilter === 'BOOKED' && slot.status !== 'booked') return false;
+    if (slotFilter === 'BOOKED' && slot.status !== 'booked' && slot.status !== 'pending_verification') return false;
     if (slotFilter === 'CHECKED_IN' && slot.status !== 'checked_in') return false;
 
     if (slotSearch.trim()) {
       const q = slotSearch.toLowerCase();
-      const team = slot.team_id ? getTeamById(slot.team_id) : null;
+      const team = slot.virtualTeam || (slot.team_id ? getTeamById(slot.team_id) : null);
       const matchSlot = String(slot.slot_number).includes(q);
       const matchTeam = team?.name?.toLowerCase().includes(q) || team?.tag?.toLowerCase().includes(q);
       const matchCaptain = team?.captain_name?.toLowerCase().includes(q) || team?.captain_uid?.includes(q);
-      const matchPlayer = team?.players?.some(p => p.name.toLowerCase().includes(q) || p.uid.includes(q));
+      const matchPlayer = team?.players?.some(p => p.name?.toLowerCase().includes(q) || p.uid?.includes(q));
       if (!matchSlot && !matchTeam && !matchCaptain && !matchPlayer) return false;
     }
 
@@ -747,16 +799,19 @@ _Panthers Esports Tournament Control_`;
               {viewMode === 'grid' && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                   {filteredSlots.map(slot => {
-                    const team = slot.team_id ? getTeamById(slot.team_id) : null;
+                    const team = slot.virtualTeam || (slot.team_id ? getTeamById(slot.team_id) : null);
                     const isOpen = slot.status === 'open';
                     const isCheckedIn = slot.status === 'checked_in';
+                    const isPending = slot.status === 'pending_verification';
 
                     return (
                       <div
-                        key={slot.id}
+                        key={slot.id || `slot-${slot.slot_number}`}
                         className={`p-3 rounded clip-hud-sm flex flex-col justify-between min-h-[140px] border transition-all ${
                           isOpen
-                            ? 'bg-panther-900/60 border-emerald-500/30'
+                            ? 'bg-panther-900/60 border-emerald-500/30 hover:border-emerald-500/60'
+                            : isPending
+                            ? 'bg-amber-950/40 border-amber-500/60 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
                             : isCheckedIn
                             ? 'bg-cyan-950/40 border-cyan-500/60 shadow-[0_0_10px_rgba(0,240,255,0.15)]'
                             : 'bg-panther-900 border-flame-600/40'
@@ -781,8 +836,13 @@ _Panthers Esports Tournament Control_`;
                                 {team.name}
                               </p>
                               <p className="text-[10px] text-amber-gold font-mono truncate">
-                                UID: {team.captain_uid}
+                                UID: {team.captain_uid || '—'}
                               </p>
+                              {isPending && slot.registration?.payment?.utr && (
+                                <p className="text-[9px] text-amber-300/80 font-mono truncate">
+                                  UTR: {slot.registration.payment.utr}
+                                </p>
+                              )}
                             </div>
                           ) : (
                             <span className="text-xs text-gray-500 italic">Empty Slot</span>
@@ -792,7 +852,46 @@ _Panthers Esports Tournament Control_`;
                         {/* Action Buttons */}
                         <div className="pt-2 border-t border-panther-800 flex items-center justify-between gap-1">
                           {isOpen ? (
-                            <span className="text-[10px] font-mono text-emerald-400">Open Slot</span>
+                            <button
+                              type="button"
+                              onClick={() => setAllottingSlotNum(slot.slot_number)}
+                              className="w-full py-1 px-2 rounded bg-flame-500/20 hover:bg-flame-500/30 text-flame-400 border border-flame-500/40 text-[10px] font-orbitron font-bold uppercase transition-all flex items-center justify-center gap-1"
+                              title="Assign squad or enter team details manually"
+                            >
+                              <span>+ Allot Slot</span>
+                            </button>
+                          ) : isPending ? (
+                            <div className="flex items-center justify-between w-full gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveSection('payments');
+                                  setRegSearch(team?.name || String(slot.slot_number));
+                                }}
+                                className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-300 font-bold text-[9px] uppercase tracking-wider transition-colors"
+                                title="Review UTR payment & approve"
+                              >
+                                Verify UTR ➔
+                              </button>
+                              <button
+                                onClick={() => setInspectingTeam(team)}
+                                className="p-1 text-gray-400 hover:text-amber-gold"
+                                title="Inspect Full Roster"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`Free Slot #${slot.slot_number}?`)) {
+                                    freeSlot(activeTournament.id, slot.slot_number);
+                                  }
+                                }}
+                                className="p-1 text-gray-500 hover:text-red-400"
+                                title="Kick / Free Slot"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           ) : (
                             <>
                               <button
@@ -848,7 +947,10 @@ _Panthers Esports Tournament Control_`;
                       </thead>
                       <tbody className="divide-y divide-panther-800/80 font-semibold">
                         {filteredSlots.map(slot => {
-                          const team = slot.team_id ? getTeamById(slot.team_id) : null;
+                          const team = slot.virtualTeam || (slot.team_id ? getTeamById(slot.team_id) : null);
+                          const isOpen = slot.status === 'open';
+                          const isPending = slot.status === 'pending_verification';
+
                           return (
                             <tr key={slot.id} className="hover:bg-panther-850/60 transition-colors">
                               <td className="p-3 text-center font-orbitron font-black text-sm text-white">
@@ -864,6 +966,11 @@ _Panthers Esports Tournament Control_`;
                                       {team.tag}
                                     </span>
                                     <span className="font-bold text-white">{team.name}</span>
+                                    {isPending && (
+                                      <span className="text-[9px] text-amber-400 font-mono">
+                                        (UTR: {slot.registration?.payment?.utr || 'Pending'})
+                                      </span>
+                                    )}
                                   </div>
                                 ) : (
                                   <span className="text-gray-500 italic">Available</span>
@@ -879,14 +986,33 @@ _Panthers Esports Tournament Control_`;
                                 {team?.captain_phone || '—'}
                               </td>
                               <td className="p-3 text-right">
-                                {team && (
+                                {isOpen ? (
+                                  <button
+                                    onClick={() => setAllottingSlotNum(slot.slot_number)}
+                                    className="px-2 py-1 rounded bg-flame-500/20 hover:bg-flame-500/30 text-flame-400 border border-flame-500/40 text-[10px] font-orbitron font-bold uppercase"
+                                  >
+                                    + Allot Slot
+                                  </button>
+                                ) : (
                                   <div className="flex items-center justify-end gap-1.5">
-                                    <button
-                                      onClick={() => checkInSlot(activeTournament.id, slot.slot_number)}
-                                      className="px-2 py-0.5 rounded bg-panther-800 text-gray-300 hover:text-cyan-400 text-[10px]"
-                                    >
-                                      {slot.status === 'checked_in' ? 'Checked ✓' : 'Check In'}
-                                    </button>
+                                    {isPending ? (
+                                      <button
+                                        onClick={() => {
+                                          setActiveSection('payments');
+                                          setRegSearch(team?.name || String(slot.slot_number));
+                                        }}
+                                        className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold uppercase"
+                                      >
+                                        Verify UTR
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => checkInSlot(activeTournament.id, slot.slot_number)}
+                                        className="px-2 py-0.5 rounded bg-panther-800 text-gray-300 hover:text-cyan-400 text-[10px]"
+                                      >
+                                        {slot.status === 'checked_in' ? 'Checked ✓' : 'Check In'}
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => setInspectingTeam(team)}
                                       className="p-1 text-gray-400 hover:text-amber-gold"
@@ -1670,6 +1796,196 @@ _Panthers Esports Tournament Control_`;
                 Done
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MANUAL ALLOT SLOT MODAL */}
+      {allottingSlotNum && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-panther-950/85 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-panther-900 border border-flame-500/50 rounded clip-hud p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-panther-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded bg-flame-500/20 border border-flame-500/40 flex items-center justify-center text-flame-400 font-orbitron font-black text-sm">
+                  #{String(allottingSlotNum).padStart(2, '0')}
+                </div>
+                <div>
+                  <h3 className="font-orbitron font-bold text-sm text-white uppercase">
+                    Manual Slot Allotment
+                  </h3>
+                  <span className="text-[10px] font-rajdhani text-gray-400">
+                    Assign Slot #{allottingSlotNum} directly to a squad
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setAllottingSlotNum(null)}
+                className="text-gray-400 hover:text-white text-xs font-bold uppercase"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* Allot Mode Toggle */}
+            <div className="grid grid-cols-2 gap-2 bg-panther-950 p-1 rounded border border-panther-800 text-xs font-rajdhani font-bold">
+              <button
+                type="button"
+                onClick={() => setAllotTab('new')}
+                className={`py-1.5 rounded uppercase transition-colors ${
+                  allotTab === 'new'
+                    ? 'bg-flame-500 text-white shadow-flame-sm'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Enter New Squad
+              </button>
+              <button
+                type="button"
+                onClick={() => setAllotTab('existing')}
+                className={`py-1.5 rounded uppercase transition-colors ${
+                  allotTab === 'existing'
+                    ? 'bg-flame-500 text-white shadow-flame-sm'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Select Existing Team ({teams.length})
+              </button>
+            </div>
+
+            {allotTab === 'existing' ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                    Choose Registered Squad
+                  </label>
+                  <select
+                    value={manualTeamSelect}
+                    onChange={(e) => setManualTeamSelect(e.target.value)}
+                    className="w-full bg-panther-950 border border-panther-700 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-flame-500 font-rajdhani font-semibold"
+                  >
+                    <option value="">-- Choose Squad --</option>
+                    {teams.map(t => (
+                      <option key={t.id} value={t.id}>
+                        [{t.tag}] {t.name} (Capt: {t.captain_name || 'N/A'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button size="sm" variant="outline" onClick={() => setAllottingSlotNum(null)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={!manualTeamSelect}
+                    onClick={() => {
+                      if (!manualTeamSelect) return;
+                      allotSlotManual(activeTournament.id, allottingSlotNum, manualTeamSelect, user?.in_game_name || 'Admin');
+                      setAllottingSlotNum(null);
+                      setManualTeamSelect('');
+                    }}
+                  >
+                    Confirm Allotment
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newSquadData.name.trim()) return;
+                  allotSlotManual(activeTournament.id, allottingSlotNum, {
+                    name: newSquadData.name.trim(),
+                    tag: newSquadData.tag.trim().toUpperCase() || newSquadData.name.trim().substring(0, 4).toUpperCase(),
+                    captain_name: newSquadData.captain_name.trim() || 'Captain',
+                    captain_uid: newSquadData.captain_uid.trim(),
+                    captain_phone: newSquadData.captain_phone.trim(),
+                    players: [
+                      { name: newSquadData.captain_name.trim() || 'Captain', uid: newSquadData.captain_uid.trim(), role: 'Captain / IGL' },
+                      { name: 'Squad Member 2', uid: '999000111', role: 'Rusher' },
+                      { name: 'Squad Member 3', uid: '999000222', role: 'Sniper' },
+                      { name: 'Squad Member 4', uid: '999000333', role: 'Support' }
+                    ]
+                  }, user?.in_game_name || 'Admin');
+
+                  setAllottingSlotNum(null);
+                  setNewSquadData({ name: '', tag: '', captain_name: '', captain_uid: '', captain_phone: '' });
+                }}
+                className="space-y-3 text-xs font-rajdhani"
+              >
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="block text-[11px] font-bold text-gray-300 uppercase mb-1">Squad Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Royal Tigers"
+                      value={newSquadData.name}
+                      onChange={(e) => setNewSquadData(prev => ({ ...prev, name: e.target.value }))}
+                      className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-flame-500 font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-300 uppercase mb-1">Tag</label>
+                    <input
+                      type="text"
+                      maxLength={5}
+                      placeholder="e.g. RTG"
+                      value={newSquadData.tag}
+                      onChange={(e) => setNewSquadData(prev => ({ ...prev, tag: e.target.value.toUpperCase() }))}
+                      className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-flame-400 font-orbitron uppercase font-bold focus:outline-none focus:border-flame-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-300 uppercase mb-1">Captain IGN *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. RTG Leader"
+                      value={newSquadData.captain_name}
+                      onChange={(e) => setNewSquadData(prev => ({ ...prev, captain_name: e.target.value }))}
+                      className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-flame-500 font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-300 uppercase mb-1">Free Fire UID (9-12 digits)</label>
+                    <input
+                      type="text"
+                      maxLength={12}
+                      placeholder="e.g. 192847192"
+                      value={newSquadData.captain_uid}
+                      onChange={(e) => setNewSquadData(prev => ({ ...prev, captain_uid: e.target.value.replace(/\D/g, '').slice(0, 12) }))}
+                      className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-amber-gold font-mono font-bold focus:outline-none focus:border-flame-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-300 uppercase mb-1">WhatsApp / Contact Phone</label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. +91 98765 43210"
+                    value={newSquadData.captain_phone}
+                    onChange={(e) => setNewSquadData(prev => ({ ...prev, captain_phone: e.target.value }))}
+                    className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-flame-500"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-panther-800">
+                  <Button size="sm" variant="outline" type="button" onClick={() => setAllottingSlotNum(null)}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" variant="primary" type="submit">
+                    ✓ Allot Slot #{allottingSlotNum}
+                  </Button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

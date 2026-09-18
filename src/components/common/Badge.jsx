@@ -31,6 +31,10 @@ export const Badge = ({ status, text, size = 'md', className = '' }) => {
     styles = "bg-cyan-950/70 text-cyan-400 border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.25)]";
     dotColor = "bg-cyan-400";
     label = label || "CHECKED IN";
+  } else if (norm === 'pending' || norm === 'pending_verification') {
+    styles = "bg-amber-950/80 text-amber-300 border-amber-500/60 shadow-[0_0_10px_rgba(245,158,11,0.25)]";
+    dotColor = "bg-amber-400 animate-pulse";
+    label = label || "PENDING UTR";
   }
 
   const sizes = {

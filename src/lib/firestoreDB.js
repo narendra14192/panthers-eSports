@@ -55,13 +55,13 @@ const CACHE = {
 };
 
 // ─── Cache Helpers ─────────────────────────────────────────────────────────────
-function readCache(key) {
+export function readCache(key) {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 }
-function writeCache(key, data) {
+export function writeCache(key, data) {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* ignore */ }
 }
 

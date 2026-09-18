@@ -14,6 +14,7 @@ import {
   saveMatch,
   saveAdminLog,
   CACHE,
+  writeCache,
 } from '../lib/firestoreDB';
 import {
   subscribeToRegistrations,
@@ -143,23 +144,44 @@ export const TournamentProvider = ({ children }) => {
     return () => { if (unsubscribe) unsubscribe(); };
   }, []);
 
-  // ── 3. Cross-tab BroadcastChannel (instant local sync, no Firestore round-trip) ──
+  // ── 3. Cross-tab BroadcastChannel & Local Storage Event Listener (instant sync) ──
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+    if (typeof window === 'undefined') return;
+
+    // Cross-tab BroadcastChannel
+    if ('BroadcastChannel' in window) {
       const channel = new BroadcastChannel('panthers_esports_realtime');
       broadcastRef.current = channel;
 
       channel.onmessage = (event) => {
         const { type, payload } = event.data || {};
-        if (type === 'SLOTS_UPDATED')       setSlots(payload);
+        if (type === 'SLOTS_UPDATED')            setSlots(payload);
         else if (type === 'TOURNAMENTS_UPDATED') setTournaments(payload);
         else if (type === 'LEADERBOARD_UPDATED') setLeaderboard(payload);
-        else if (type === 'TEAMS_UPDATED')   setTeams(payload);
-        else if (type === 'LOGS_UPDATED')    setAdminLogs(payload);
+        else if (type === 'TEAMS_UPDATED')        setTeams(payload);
+        else if (type === 'LOGS_UPDATED')         setAdminLogs(payload);
       };
-
-      return () => channel.close();
     }
+
+    // Storage event fires when localStorage is modified in another tab or navigation
+    const handleStorage = (e) => {
+      try {
+        if (!e.newValue) return;
+        const parsed = JSON.parse(e.newValue);
+        if (e.key === CACHE.SLOTS)            setSlots(parsed);
+        else if (e.key === CACHE.TEAMS)        setTeams(parsed);
+        else if (e.key === CACHE.TOURNAMENTS)  setTournaments(parsed);
+        else if (e.key === CACHE.LEADERBOARD)  setLeaderboard(parsed);
+        else if (e.key === CACHE.ADMIN_LOGS)   setAdminLogs(parsed);
+      } catch { /* ignore */ }
+    };
+
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      broadcastRef.current?.close();
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   const broadcast = (type, payload) => {
@@ -178,6 +200,7 @@ export const TournamentProvider = ({ children }) => {
 
     setAdminLogs(prev => {
       const updated = [newLog, ...prev].slice(0, 50);
+      writeCache(CACHE.ADMIN_LOGS, updated);
       broadcast('LOGS_UPDATED', updated);
       return updated;
     });
@@ -228,11 +251,13 @@ export const TournamentProvider = ({ children }) => {
 
     setTournaments(prev => {
       const updated = [newTournament, ...prev];
+      writeCache(CACHE.TOURNAMENTS, updated);
       broadcast('TOURNAMENTS_UPDATED', updated);
       return updated;
     });
     setSlots(prev => {
       const updated = [...prev, ...newSlots];
+      writeCache(CACHE.SLOTS, updated);
       broadcast('SLOTS_UPDATED', updated);
       return updated;
     });
@@ -248,6 +273,7 @@ export const TournamentProvider = ({ children }) => {
   const updateTournament = (id, data, adminName = 'PantherAdmin') => {
     setTournaments(prev => {
       const updated = prev.map(t => t.id === id ? { ...t, ...data, updated_at: new Date().toISOString() } : t);
+      writeCache(CACHE.TOURNAMENTS, updated);
       broadcast('TOURNAMENTS_UPDATED', updated);
       const changedTournament = updated.find(t => t.id === id);
       if (changedTournament) saveTournament(changedTournament);
@@ -262,11 +288,13 @@ export const TournamentProvider = ({ children }) => {
 
     setTournaments(prev => {
       const updated = prev.filter(item => item.id !== id);
+      writeCache(CACHE.TOURNAMENTS, updated);
       broadcast('TOURNAMENTS_UPDATED', updated);
       return updated;
     });
     setSlots(prev => {
       const updated = prev.filter(s => s.tournament_id !== id);
+      writeCache(CACHE.SLOTS, updated);
       broadcast('SLOTS_UPDATED', updated);
       return updated;
     });
@@ -279,6 +307,7 @@ export const TournamentProvider = ({ children }) => {
   const updateTournamentRoom = (id, roomId, roomPassword, adminName = 'PantherAdmin') => {
     setTournaments(prev => {
       const updated = prev.map(t => t.id === id ? { ...t, room_id: roomId, room_password: roomPassword } : t);
+      writeCache(CACHE.TOURNAMENTS, updated);
       broadcast('TOURNAMENTS_UPDATED', updated);
       const changed = updated.find(t => t.id === id);
       if (changed) saveTournament(changed);
@@ -290,6 +319,7 @@ export const TournamentProvider = ({ children }) => {
   const updateTournamentStatus = (id, status, adminName = 'PantherAdmin') => {
     setTournaments(prev => {
       const updated = prev.map(t => t.id === id ? { ...t, status } : t);
+      writeCache(CACHE.TOURNAMENTS, updated);
       broadcast('TOURNAMENTS_UPDATED', updated);
       const changed = updated.find(t => t.id === id);
       if (changed) saveTournament(changed);
@@ -339,6 +369,7 @@ export const TournamentProvider = ({ children }) => {
 
         setTeams(prev => {
           const updated = [...prev.filter(t => t.id !== newTeam.id), newTeam];
+          writeCache(CACHE.TEAMS, updated);
           broadcast('TEAMS_UPDATED', updated);
           return updated;
         });
@@ -366,6 +397,7 @@ export const TournamentProvider = ({ children }) => {
           return s;
         }).sort((a, b) => a.slot_number - b.slot_number);
 
+        writeCache(CACHE.SLOTS, updated);
         broadcast('SLOTS_UPDATED', updated);
         return updated;
       });
@@ -421,6 +453,7 @@ export const TournamentProvider = ({ children }) => {
         }
         return s;
       });
+      writeCache(CACHE.SLOTS, updated);
       broadcast('SLOTS_UPDATED', updated);
       return updated;
     });
@@ -428,8 +461,34 @@ export const TournamentProvider = ({ children }) => {
     addAdminLog('SLOT_REVOKED', `Freed Slot #${slotNumber} in ${tournamentId} (was: "${team?.name || 'Unknown'}").`, adminName);
   };
 
-  const allotSlotManual = (tournamentId, slotNumber, teamId, adminName = 'PantherAdmin') => {
-    const team = teams.find(t => t.id === teamId);
+  const allotSlotManual = (tournamentId, slotNumber, teamDataOrId, adminName = 'PantherAdmin') => {
+    let teamId = typeof teamDataOrId === 'string' ? teamDataOrId : teamDataOrId?.id;
+    let team = teams.find(t => t.id === teamId);
+
+    // If a new squad object was passed from Admin Portal
+    if (typeof teamDataOrId === 'object' && teamDataOrId !== null && !team) {
+      teamId = teamDataOrId.id || `team-${Date.now()}`;
+      team = {
+        id: teamId,
+        name: teamDataOrId.name || teamDataOrId.team_name || `Squad Slot #${slotNumber}`,
+        tag: teamDataOrId.tag || teamDataOrId.team_tag || (teamDataOrId.name || 'TEAM').substring(0, 4).toUpperCase(),
+        captain_name: teamDataOrId.captain_name || 'Captain',
+        captain_phone: teamDataOrId.captain_phone || '',
+        captain_uid: teamDataOrId.captain_uid || '',
+        players: teamDataOrId.players || [],
+        payment: { status: 'verified', method: 'ADMIN_MANUAL', amount: 50 },
+        created_at: new Date().toISOString()
+      };
+
+      setTeams(prev => {
+        const updated = [...prev.filter(t => t.id !== teamId), team];
+        writeCache(CACHE.TEAMS, updated);
+        broadcast('TEAMS_UPDATED', updated);
+        return updated;
+      });
+      saveTeam(team);
+    }
+
     setSlots(prev => {
       const updated = prev.map(s => {
         if (s.tournament_id === tournamentId && s.slot_number === slotNumber) {
@@ -439,6 +498,7 @@ export const TournamentProvider = ({ children }) => {
         }
         return s;
       });
+      writeCache(CACHE.SLOTS, updated);
       broadcast('SLOTS_UPDATED', updated);
       return updated;
     });
@@ -456,6 +516,7 @@ export const TournamentProvider = ({ children }) => {
         }
         return s;
       });
+      writeCache(CACHE.SLOTS, updated);
       broadcast('SLOTS_UPDATED', updated);
       return updated;
     });
@@ -470,6 +531,7 @@ export const TournamentProvider = ({ children }) => {
         }
         return s;
       });
+      writeCache(CACHE.SLOTS, updated);
       broadcast('SLOTS_UPDATED', updated);
       const changed = updated.filter(s => s.tournament_id === tournamentId && s.status === 'checked_in');
       saveSlotsInBatch(changed);
@@ -488,6 +550,7 @@ export const TournamentProvider = ({ children }) => {
         }
         return s;
       });
+      writeCache(CACHE.SLOTS, updated);
       broadcast('SLOTS_UPDATED', updated);
       const freed = updated.filter(s => s.tournament_id === tournamentId && s.status === 'open' && !s.team_id);
       saveSlotsInBatch(freed);
@@ -514,6 +577,7 @@ export const TournamentProvider = ({ children }) => {
         }
         return s;
       });
+      writeCache(CACHE.SLOTS, updated);
       broadcast('SLOTS_UPDATED', updated);
       return updated;
     });
@@ -535,6 +599,7 @@ export const TournamentProvider = ({ children }) => {
         }
         return t;
       });
+      writeCache(CACHE.TEAMS, updated);
       broadcast('TEAMS_UPDATED', updated);
       return updated;
     });
@@ -563,6 +628,7 @@ export const TournamentProvider = ({ children }) => {
         }
         return s;
       });
+      writeCache(CACHE.SLOTS, updated);
       broadcast('SLOTS_UPDATED', updated);
       return updated;
     });
@@ -675,6 +741,7 @@ export const TournamentProvider = ({ children }) => {
         }
       });
 
+      writeCache(CACHE.LEADERBOARD, updated);
       broadcast('LEADERBOARD_UPDATED', updated);
       return updated;
     });
@@ -703,9 +770,25 @@ export const TournamentProvider = ({ children }) => {
       .sort((a, b) => a.slot_number - b.slot_number);
   }, [slots, tournaments]);
 
-  const getTeamById = useCallback((teamId) =>
-    teams.find(t => t.id === teamId) || null,
-  [teams]);
+  const getTeamById = useCallback((teamId) => {
+    if (!teamId) return null;
+    const existing = teams.find(t => t.id === teamId);
+    if (existing) return existing;
+    const reg = (registrations || []).find(r => r.team_id === teamId || r.id === teamId);
+    if (reg) {
+      return {
+        id: reg.team_id || reg.id,
+        name: reg.team_name,
+        tag: reg.team_tag || reg.team_name?.substring(0, 4).toUpperCase(),
+        captain_name: reg.captain_name,
+        captain_phone: reg.captain_phone,
+        captain_uid: reg.captain_uid,
+        players: reg.players || [],
+        payment: reg.payment || null,
+      };
+    }
+    return null;
+  }, [teams, registrations]);
 
   const getTournamentLeaderboard = useCallback((tourneyId) =>
     sortLeaderboard(leaderboard.filter(lb => lb.tournament_id === tourneyId)),
