@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Meta (seeding sentinel) ─────────────────────────────────────────────
+    match /_meta/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ── Tournaments — public read, auth write ───────────────────────────────
+    match /tournaments/{tournamentId} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null;
+    }
+
+    // ── Slots — public read, auth write ────────────────────────────────────
+    // Players can book slots (they must be authenticated)
+    match /slots/{slotId} {
+      allow read: if true;
+      allow create, update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+
+    // ── Teams — auth read/write ─────────────────────────────────────────────
+    match /teams/{teamId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+
+    // ── Leaderboard — public read, auth write ──────────────────────────────
+    match /leaderboard/{entryId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ── Matches — public read, auth write ──────────────────────────────────
+    match /matches/{matchId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ── Admin Logs — auth only ──────────────────────────────────────────────
+    match /admin_logs/{logId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── Tournament Registrations (UTR/payments) — auth only ────────────────
+    match /tournament_registrations/{regId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
