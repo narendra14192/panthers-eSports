@@ -13,6 +13,8 @@ import {
   saveLeaderboardBatch,
   saveMatch,
   saveAdminLog,
+  saveAnnouncementToDB,
+  subscribeToAnnouncement,
   CACHE,
   writeCache,
 } from '../lib/firestoreDB';
@@ -62,6 +64,14 @@ export const TournamentProvider = ({ children }) => {
     readLS(CACHE.MATCHES, readLS(LS_KEYS.MATCHES, []))
   );
   const [registrations, setRegistrations] = useState([]);
+  const [announcement, setAnnouncement] = useState(() =>
+    readLS(CACHE.ANNOUNCEMENT, {
+      text: '🔥 Panthers Free Fire Tri-Map Series — 12 Slots Open for Registration!',
+      type: 'flame',
+      active: true,
+      updated_at: new Date().toISOString()
+    })
+  );
 
   // Loading + sync state
   const [isLoading, setIsLoading] = useState(true);
@@ -124,6 +134,9 @@ export const TournamentProvider = ({ children }) => {
       (data) => { if (mounted) setMatches(data); },
       []
     );
+    const unsubAnnouncement = subscribeToAnnouncement((data) => {
+      if (mounted && data) setAnnouncement(data);
+    });
 
     return () => {
       mounted = false;
@@ -133,6 +146,7 @@ export const TournamentProvider = ({ children }) => {
       unsubLeaderboard();
       unsubAdminLogs();
       unsubMatches();
+      if (unsubAnnouncement) unsubAnnouncement();
     };
   }, []);
 
@@ -160,6 +174,7 @@ export const TournamentProvider = ({ children }) => {
         else if (type === 'LEADERBOARD_UPDATED') setLeaderboard(payload);
         else if (type === 'TEAMS_UPDATED')        setTeams(payload);
         else if (type === 'LOGS_UPDATED')         setAdminLogs(payload);
+        else if (type === 'ANNOUNCEMENT_UPDATED') setAnnouncement(payload);
       };
     }
 
@@ -168,11 +183,12 @@ export const TournamentProvider = ({ children }) => {
       try {
         if (!e.newValue) return;
         const parsed = JSON.parse(e.newValue);
-        if (e.key === CACHE.SLOTS)            setSlots(parsed);
-        else if (e.key === CACHE.TEAMS)        setTeams(parsed);
-        else if (e.key === CACHE.TOURNAMENTS)  setTournaments(parsed);
-        else if (e.key === CACHE.LEADERBOARD)  setLeaderboard(parsed);
-        else if (e.key === CACHE.ADMIN_LOGS)   setAdminLogs(parsed);
+        if (e.key === CACHE.SLOTS)             setSlots(parsed);
+        else if (e.key === CACHE.TEAMS)         setTeams(parsed);
+        else if (e.key === CACHE.TOURNAMENTS)   setTournaments(parsed);
+        else if (e.key === CACHE.LEADERBOARD)   setLeaderboard(parsed);
+        else if (e.key === CACHE.ADMIN_LOGS)    setAdminLogs(parsed);
+        else if (e.key === CACHE.ANNOUNCEMENT)  setAnnouncement(parsed);
       } catch { /* ignore */ }
     };
 
@@ -208,6 +224,40 @@ export const TournamentProvider = ({ children }) => {
     // Persist to Firestore
     saveAdminLog(newLog);
   }, []);
+
+  // ─── Broadcast Announcements ("or anything") ────────────────────────────────
+  const publishAnnouncement = useCallback((data, adminName = 'PantherAdmin') => {
+    const updated = {
+      text: typeof data === 'string' ? data : (data.text || ''),
+      type: (typeof data === 'object' && data.type) || 'flame',
+      link: (typeof data === 'object' && data.link) || '',
+      active: typeof data === 'object' ? data.active !== false : true,
+      updated_at: new Date().toISOString(),
+      posted_by: adminName
+    };
+    setAnnouncement(updated);
+    writeCache(CACHE.ANNOUNCEMENT, updated);
+    broadcast('ANNOUNCEMENT_UPDATED', updated);
+    saveAnnouncementToDB(updated);
+    addAdminLog('ANNOUNCEMENT_PUBLISHED', `Broadcasted: "${updated.text.slice(0, 45)}..."`, adminName);
+    return updated;
+  }, [addAdminLog]);
+
+  const clearAnnouncement = useCallback((adminName = 'PantherAdmin') => {
+    const updated = {
+      text: '',
+      type: 'flame',
+      link: '',
+      active: false,
+      updated_at: new Date().toISOString(),
+      posted_by: adminName
+    };
+    setAnnouncement(updated);
+    writeCache(CACHE.ANNOUNCEMENT, updated);
+    broadcast('ANNOUNCEMENT_UPDATED', updated);
+    saveAnnouncementToDB(updated);
+    addAdminLog('ANNOUNCEMENT_CLEARED', 'Cleared public broadcast banner.', adminName);
+  }, [addAdminLog]);
 
   // ==========================================
   // TOURNAMENT ACTIONS
@@ -808,6 +858,9 @@ export const TournamentProvider = ({ children }) => {
         adminLogs,
         matches,
         registrations,
+        announcement,
+        publishAnnouncement,
+        clearAnnouncement,
         isLoading,
         syncError,
         approveRegistration,

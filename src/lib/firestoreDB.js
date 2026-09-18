@@ -41,17 +41,19 @@ export const COLLECTIONS = {
   MATCHES:         'matches',
   ADMIN_LOGS:      'admin_logs',
   REGISTRATIONS:   'tournament_registrations',
+  ANNOUNCEMENTS:   'announcements',
 };
 
 // ─── Local Storage Cache Keys (offline fallback) ──────────────────────────────
 const CACHE = {
-  TOURNAMENTS: 'panthers_fb_tournaments',
-  SLOTS:       'panthers_fb_slots',
-  TEAMS:       'panthers_fb_teams',
-  LEADERBOARD: 'panthers_fb_leaderboard',
-  MATCHES:     'panthers_fb_matches',
-  ADMIN_LOGS:  'panthers_fb_admin_logs',
-  SEEDED:      'panthers_fb_seeded_v1',
+  TOURNAMENTS:  'panthers_fb_tournaments',
+  SLOTS:        'panthers_fb_slots',
+  TEAMS:        'panthers_fb_teams',
+  LEADERBOARD:  'panthers_fb_leaderboard',
+  MATCHES:      'panthers_fb_matches',
+  ADMIN_LOGS:   'panthers_fb_admin_logs',
+  ANNOUNCEMENT: 'panthers_fb_announcement_v1',
+  SEEDED:       'panthers_fb_seeded_v1',
 };
 
 // ─── Cache Helpers ─────────────────────────────────────────────────────────────
@@ -298,5 +300,52 @@ export async function saveAdminLog(log) {
   }
 }
 
+// ─── ANNOUNCEMENT CRUD & SYNC ───────────────────────────────────────────────
+
+export async function saveAnnouncementToDB(announcement) {
+  const data = clean({
+    ...announcement,
+    updated_at: new Date().toISOString(),
+    server_timestamp: serverTimestamp()
+  });
+  writeCache(CACHE.ANNOUNCEMENT, data);
+  try {
+    if (db) await setDoc(doc(db, COLLECTIONS.ANNOUNCEMENTS, 'active_banner'), data, { merge: true });
+  } catch (err) {
+    console.warn('[Firestore] saveAnnouncement error:', err.message);
+  }
+}
+
+export function subscribeToAnnouncement(onData) {
+  const cached = readCache(CACHE.ANNOUNCEMENT);
+  if (cached) onData(cached);
+
+  if (!db) return () => {};
+
+  try {
+    const unsub = onSnapshot(
+      doc(db, COLLECTIONS.ANNOUNCEMENTS, 'active_banner'),
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          const cleaned = {};
+          for (const [k, v] of Object.entries(data)) {
+            cleaned[k] = v instanceof Timestamp ? v.toDate().toISOString() : v;
+          }
+          writeCache(CACHE.ANNOUNCEMENT, cleaned);
+          onData(cleaned);
+        }
+      },
+      (err) => {
+        console.warn('[Firestore] announcement listener error:', err.message);
+      }
+    );
+    return unsub;
+  } catch (err) {
+    return () => {};
+  }
+}
+
 // ─── Cache Keys Export ────────────────────────────────────────────────────────
 export { CACHE };
+

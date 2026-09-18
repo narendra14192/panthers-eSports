@@ -35,6 +35,15 @@ import {
   IndianRupee,
   XCircle,
   BadgeCheck,
+  Plus,
+  Calendar,
+  CalendarPlus,
+  Megaphone,
+  Check,
+  AlertCircle,
+  Share2,
+  Bell,
+  Layers,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -46,6 +55,12 @@ export const AdminPortal = ({ onExitToPublic }) => {
     teams,
     adminLogs,
     registrations = [],
+    announcement,
+    publishAnnouncement,
+    clearAnnouncement,
+    createTournament,
+    updateTournament,
+    deleteTournament,
     approveRegistration,
     rejectRegistration,
     updateTournamentRoom,
@@ -60,7 +75,7 @@ export const AdminPortal = ({ onExitToPublic }) => {
   } = useTournaments();
 
   // Active navigation tab
-  const [activeSection, setActiveSection] = useState('dashboard'); // 'dashboard' | 'slots' | 'payments' | 'room' | 'scoring' | 'teams' | 'audit'
+  const [activeSection, setActiveSection] = useState('dashboard'); // 'dashboard' | 'events' | 'slots' | 'payments' | 'room' | 'scoring' | 'teams' | 'audit'
 
   // Firebase Registration & Payment State
   const [regFilter, setRegFilter] = useState('ALL'); // 'ALL' | 'PENDING' | 'ACCEPTED' | 'REJECTED'
@@ -68,8 +83,51 @@ export const AdminPortal = ({ onExitToPublic }) => {
   const [copiedUtr, setCopiedUtr] = useState(null);
   const [processingRegId, setProcessingRegId] = useState(null);
 
-  // Selected tournament (defaulting to the single Tri-Map event)
-  const activeTournament = tournaments[0] || null;
+  // Selected tournament state (enables managing multiple events)
+  const [selectedTourneyId, setSelectedTourneyId] = useState(() => tournaments[0]?.id || '');
+  useEffect(() => {
+    if (!selectedTourneyId && tournaments.length > 0) {
+      setSelectedTourneyId(tournaments[0].id);
+    }
+  }, [tournaments, selectedTourneyId]);
+  const activeTournament = tournaments.find(t => t.id === selectedTourneyId) || tournaments[0] || null;
+
+  // Modal State for Announcing / Creating a New Event
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newEventData, setNewEventData] = useState({
+    name: '',
+    mode: 'Squad (4v4)',
+    map: 'Bermuda, Purgatory & Kalahari',
+    date: new Date().toISOString().split('T')[0],
+    time: '20:00',
+    entry_fee: 50,
+    prize_pool: 400,
+    total_slots: 12,
+    banner_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80',
+    rules: `1. ESPORTS RULES ONLY — Gun skin attributes are strictly OFF (Default weapon stats only).
+2. NO EMULATORS / IPADS — Mobile phone devices only. Emulators, PCs, and tablets are strictly banned.
+3. 3 MATCHES BACK-TO-BACK — Bermuda, Purgatory, Kalahari.
+4. OFFICIAL FREE FIRE SCORING: 1st: 12 pts, 2nd: 9 pts, 3rd: 8 pts... + 1 pt per kill.
+5. ANTI-CHEAT & ANTI-TEAMING — Zero tolerance. Immediate disqualification.`,
+    description: 'Official Panthers Esports Free Fire Battle Royale Tournament. 12 squads fight for the Booyah!'
+  });
+
+  // Live Broadcast Notice State ("or anything")
+  const [broadcastNoticeText, setBroadcastNoticeText] = useState(announcement?.text || '');
+  const [broadcastNoticeType, setBroadcastNoticeType] = useState(announcement?.type || 'flame');
+  const [broadcastNoticeLink, setBroadcastNoticeLink] = useState(announcement?.link || '');
+  const [broadcastNoticeActive, setBroadcastNoticeActive] = useState(announcement?.active !== false);
+  const [noticeSaved, setNoticeSaved] = useState(false);
+  const [copiedInvite, setCopiedInvite] = useState(false);
+
+  useEffect(() => {
+    if (announcement) {
+      setBroadcastNoticeText(announcement.text || '');
+      setBroadcastNoticeType(announcement.type || 'flame');
+      setBroadcastNoticeLink(announcement.link || '');
+      setBroadcastNoticeActive(announcement.active !== false);
+    }
+  }, [announcement]);
 
   // Clock
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
@@ -310,13 +368,13 @@ export const AdminPortal = ({ onExitToPublic }) => {
     setTimeout(() => setBroadcastSuccess(false), 2500);
   };
 
-  // Generate WhatsApp / Discord announcement
-  const announcementText = `🔥 *PANTHERS ESPORTS — 3-MAP CHAMPIONSHIP* 🔥
+  // Generate WhatsApp / Discord announcement for currently active tournament
+  const announcementText = `🔥 *PANTHERS ESPORTS — ${activeTournament?.name?.toUpperCase() || '3-MAP CHAMPIONSHIP'}* 🔥
 ━━━━━━━━━━━━━━━━━━━━
-🏆 *Format:* 3 Matches Back-to-Back (12 Slots)
-📍 *Match 1:* Bermuda (19:00 IST)
-📍 *Match 2:* Purgatory (19:45 IST)
-📍 *Match 3:* Kalahari (20:30 IST)
+🏆 *Format:* ${activeTournament?.mode || 'Squad'} (${activeTournament?.total_slots || 12} Slots)
+📍 *Map:* ${activeTournament?.map || 'Bermuda, Purgatory & Kalahari'}
+📅 *Date & Time:* ${activeTournament?.date || 'Today'} @ ${activeTournament?.time || '19:00'} IST
+💰 *Prize Pool:* ₹${activeTournament?.prize_pool || 0} (Entry: ${activeTournament?.entry_fee ? `₹${activeTournament.entry_fee}` : 'FREE'})
 
 🔑 *Custom Room ID:* ${roomId || 'PENDING'}
 🔒 *Password:* ${roomPassword || 'PENDING'}
@@ -325,7 +383,6 @@ export const AdminPortal = ({ onExitToPublic }) => {
 • Gun skin attributes strictly OFF
 • Mobile phones only (NO emulators/tablets)
 • Join your registered slot number immediately!
-• Winner ₹200 | 2nd ₹130 | 3rd ₹70
 ━━━━━━━━━━━━━━━━━━━━
 _Panthers Esports Tournament Control_`;
 
@@ -333,6 +390,84 @@ _Panthers Esports Tournament Control_`;
     navigator.clipboard.writeText(announcementText);
     setCopiedAnnouncement(true);
     setTimeout(() => setCopiedAnnouncement(false), 2500);
+  };
+
+  // Generate WhatsApp / Discord Tournament Invitation Broadcast
+  const eventInviteText = `🔥 *PANTHERS ESPORTS — NEW EVENT ANNOUNCEMENT* 🔥
+━━━━━━━━━━━━━━━━━━━━
+⚔️ *${activeTournament?.name || 'Panthers Championship'}*
+🏆 *Prize Pool:* ₹${activeTournament?.prize_pool || 0}
+🎟️ *Entry Fee:* ${activeTournament?.entry_fee ? `₹${activeTournament.entry_fee}` : 'FREE'}
+📍 *Map:* ${activeTournament?.map || 'Bermuda, Purgatory & Kalahari'}
+📅 *Schedule:* ${activeTournament?.date || 'Today'} at ${activeTournament?.time || '20:00'} IST
+👥 *Slots:* ${activeTournament?.total_slots || 12} Slots Only!
+
+📲 *Register Your Squad Online:*
+${typeof window !== 'undefined' ? window.location.origin : ''}/#/tournaments
+
+_Panthers Esports Official Operations_`;
+
+  const handleCopyInvite = () => {
+    navigator.clipboard.writeText(eventInviteText);
+    setCopiedInvite(true);
+    setTimeout(() => setCopiedInvite(false), 2500);
+  };
+
+  // Handle Event Creation Submit
+  const handleCreateEventSubmit = (e) => {
+    e.preventDefault();
+    if (!newEventData.name.trim()) return;
+
+    const entryNum = parseFloat(newEventData.entry_fee) || 0;
+    const prizeNum = parseFloat(newEventData.prize_pool) || 0;
+    const slotsNum = parseInt(newEventData.total_slots, 10) || 12;
+
+    const created = createTournament({
+      ...newEventData,
+      entry_fee: entryNum,
+      prize_pool: prizeNum,
+      total_slots: slotsNum,
+      prize_distribution: {
+        '1st': `₹${Math.round(prizeNum * 0.5)}`,
+        '2nd': `₹${Math.round(prizeNum * 0.3)}`,
+        '3rd': `₹${Math.round(prizeNum * 0.2)}`,
+      },
+    }, user?.displayName || 'StaffAdmin');
+
+    if (created?.id) {
+      setSelectedTourneyId(created.id);
+    }
+    setShowCreateModal(false);
+
+    try {
+      confetti({
+        particleCount: 120,
+        spread: 80,
+        origin: { y: 0.5 },
+        colors: ['#FF4D00', '#FFB800', '#00F0FF']
+      });
+    } catch { /* ignore */ }
+  };
+
+  // Handle Broadcast Notice Save
+  const handleSaveNotice = (e) => {
+    e.preventDefault();
+    publishAnnouncement({
+      text: broadcastNoticeText,
+      type: broadcastNoticeType,
+      link: broadcastNoticeLink,
+      active: broadcastNoticeActive
+    }, user?.displayName || 'StaffAdmin');
+    setNoticeSaved(true);
+    setTimeout(() => setNoticeSaved(false), 2500);
+  };
+
+  // Handle Clear Broadcast Notice
+  const handleClearNotice = () => {
+    clearAnnouncement(user?.displayName || 'StaffAdmin');
+    setBroadcastNoticeText('');
+    setNoticeSaved(true);
+    setTimeout(() => setNoticeSaved(false), 2500);
   };
 
   // Handle Score Input
@@ -397,17 +532,36 @@ _Panthers Esports Tournament Control_`;
             </div>
           </div>
 
-          {/* Quick Info Badge on Active Tournament */}
-          <div className="hidden lg:flex items-center gap-4 text-xs font-rajdhani bg-panther-900 border border-panther-800 px-3.5 py-1.5 rounded clip-hud-sm">
-            <span className="text-gray-400">Target Event:</span>
-            <span className="font-bold text-amber-gold uppercase truncate max-w-xs">
-              {activeTournament.name}
-            </span>
-            <Badge status={activeTournament.status} size="sm" />
+          {/* Active Tournament Switcher Dropdown */}
+          <div className="flex items-center gap-2 bg-panther-900 border border-panther-800 px-3 py-1.5 rounded clip-hud-sm">
+            <span className="text-gray-400 text-xs font-rajdhani hidden xl:inline">Event:</span>
+            <select
+              value={activeTournament?.id || ''}
+              onChange={(e) => setSelectedTourneyId(e.target.value)}
+              className="bg-panther-950 text-amber-gold font-rajdhani font-bold text-xs uppercase px-2 py-1 rounded border border-panther-700 focus:outline-none focus:border-flame-500 cursor-pointer max-w-[170px] sm:max-w-[240px] truncate"
+            >
+              {tournaments.map((t) => (
+                <option key={t.id} value={t.id} className="bg-panther-950 text-white">
+                  {t.name} ({t.status.toUpperCase()})
+                </option>
+              ))}
+            </select>
+            {activeTournament && <Badge status={activeTournament.status} size="sm" />}
           </div>
 
           {/* Direct Quick Actions */}
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-rajdhani font-bold uppercase bg-gradient-to-r from-flame-500 to-amber-gold hover:from-flame-600 hover:to-amber-500 text-white shadow-flame-sm transition-all hover:scale-105"
+              title="Host and Announce a New Event or Tournament"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">+ Announce Event</span>
+              <span className="sm:hidden">+ Event</span>
+            </button>
+
             <button
               type="button"
               onClick={handleCopyAnnouncement}
@@ -450,13 +604,14 @@ _Panthers Esports Tournament Control_`;
 
           {[
             { id: 'dashboard', label: 'Operations Hub', icon: LayoutDashboard, badge: `${occupancyPercent}%` },
-            { id: 'slots', label: '12-Slot Commander', icon: Grid3X3, count: bookedSlots.length },
+            { id: 'events', label: 'Events & Broadcast', icon: Megaphone, count: tournaments.length },
+            { id: 'slots', label: `${activeTournament?.total_slots || 12}-Slot Commander`, icon: Grid3X3, count: bookedSlots.length },
             { 
               id: 'payments', 
               label: 'UTR & Approvals', 
               icon: IndianRupee, 
-              count: (registrations || []).filter(r => r.status === 'pending' || r.payment?.status === 'pending_verification').length,
-              alert: (registrations || []).filter(r => r.status === 'pending' || r.payment?.status === 'pending_verification').length > 0 
+              count: (registrations || []).filter(r => (r.tournament_id === activeTournament.id || !r.tournament_id) && (r.status === 'pending' || r.payment?.status === 'pending_verification')).length,
+              alert: (registrations || []).filter(r => (r.tournament_id === activeTournament.id || !r.tournament_id) && (r.status === 'pending' || r.payment?.status === 'pending_verification')).length > 0 
             },
             { id: 'room', label: 'Custom Room Dispatch', icon: Key, active: Boolean(roomId) },
             { id: 'scoring', label: '3-Match Scoring', icon: Trophy },
@@ -712,7 +867,345 @@ _Panthers Esports Tournament Control_`;
             </div>
           )}
 
-          {/* SECTION B: 12-SLOT COMMANDER */}
+          {/* SECTION: EVENTS & LIVE BROADCAST COMMANDER */}
+          {activeSection === 'events' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Header with Quick Action */}
+              <div className="bg-gradient-to-r from-panther-900 via-panther-850 to-panther-900 border border-panther-800 p-5 rounded clip-hud flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-card-dark">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="bg-flame-950 text-flame-400 border border-flame-600/60 text-[9px] font-orbitron font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1">
+                      <Megaphone className="w-2.5 h-2.5" />
+                      Broadcast & Season Commander
+                    </span>
+                    <span className="text-xs font-mono text-gray-400">
+                      {tournaments.length} Registered Events
+                    </span>
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-orbitron font-black text-white uppercase tracking-wide">
+                    Events & Broadcast Hub
+                  </h2>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Announce new tournaments, schedule competitive seasons, and broadcast instant ticker notices across the player platform.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(true)}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded text-xs font-rajdhani font-bold uppercase bg-gradient-to-r from-flame-500 to-amber-gold hover:from-flame-600 hover:to-amber-500 text-white shadow-flame-md transition-all hover:scale-105"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Announce New Event</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 1. TOP DUAL CONSOLE: LIVE NOTICE BROADCASTER + 1-CLICK SHARE GENERATOR */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left: Live Public Announcement Ticker ("or anything") */}
+                <div className="lg:col-span-7 bg-panther-900 border border-panther-800 rounded clip-hud p-5 space-y-4 shadow-card-dark relative overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-panther-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Radio className="w-4 h-4 text-flame-400 animate-pulse" />
+                      <h3 className="font-orbitron font-bold text-sm text-white uppercase tracking-wider">
+                        Live Public Website Announcement
+                      </h3>
+                    </div>
+                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 border border-emerald-600/50 px-2 py-0.5 rounded uppercase">
+                      Instant Sync
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-gray-400">
+                    Post any urgent notice, slot availability update, room credentials alert, or prize ceremony news. It immediately appears as an animated top banner on the public player website.
+                  </p>
+
+                  <form onSubmit={handleSaveNotice} className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                        Announcement Text *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. 🔥 REGISTRATION OPEN FOR SUNDAY 9PM TRI-MAP — ONLY 4 SLOTS LEFT!"
+                        value={broadcastNoticeText}
+                        onChange={(e) => setBroadcastNoticeText(e.target.value)}
+                        className="w-full bg-panther-950 border border-panther-700 rounded px-3 py-2 text-xs text-white font-rajdhani font-semibold focus:outline-none focus:border-flame-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                          Banner Urgency Style
+                        </label>
+                        <select
+                          value={broadcastNoticeType}
+                          onChange={(e) => setBroadcastNoticeType(e.target.value)}
+                          className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white font-rajdhani font-bold focus:outline-none focus:border-flame-500"
+                        >
+                          <option value="flame">🔥 Flame (Urgent / High Priority)</option>
+                          <option value="emerald">🟢 Emerald (Verified / Passwords)</option>
+                          <option value="amber">⚠️ Amber (Notice / Schedule)</option>
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                          Optional Link URL
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. #/tournaments or https://..."
+                          value={broadcastNoticeLink}
+                          onChange={(e) => setBroadcastNoticeLink(e.target.value)}
+                          className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-flame-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Live Preview Bar */}
+                    <div className="pt-2">
+                      <span className="text-[10px] font-mono text-gray-400 uppercase tracking-widest block mb-1">
+                        Live Preview on Player Website:
+                      </span>
+                      <div className={`p-2 rounded border text-xs font-rajdhani font-bold flex items-center justify-between gap-2 ${
+                        broadcastNoticeType === 'emerald'
+                          ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/50'
+                          : broadcastNoticeType === 'amber'
+                          ? 'bg-amber-950/90 text-amber-300 border-amber-500/50'
+                          : 'bg-gradient-to-r from-red-950/90 via-flame-950/90 to-red-950/90 text-white border-flame-500/60'
+                      }`}>
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="bg-flame-500 text-white text-[9px] font-orbitron font-black px-1.5 py-0.5 rounded uppercase animate-pulse">
+                            BROADCAST
+                          </span>
+                          <span className="truncate">{broadcastNoticeText || 'Your announcement will appear here in real-time...'}</span>
+                        </div>
+                        <span className="text-[10px] text-flame-400 flex-shrink-0">Preview</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={broadcastNoticeActive}
+                          onChange={(e) => setBroadcastNoticeActive(e.target.checked)}
+                          className="rounded border-panther-700 text-flame-500 focus:ring-0 bg-panther-950"
+                        />
+                        <span className="text-xs font-rajdhani font-bold text-gray-300 uppercase">
+                          Display Banner Active
+                        </span>
+                      </label>
+
+                      <div className="flex items-center gap-2">
+                        {broadcastNoticeText && (
+                          <button
+                            type="button"
+                            onClick={handleClearNotice}
+                            className="px-3 py-1.5 rounded text-xs font-rajdhani font-bold uppercase text-gray-400 hover:text-red-400 bg-panther-950 border border-panther-800 transition-colors"
+                          >
+                            Take Down Banner
+                          </button>
+                        )}
+                        <Button size="sm" variant="primary" type="submit" icon={CheckCircle2}>
+                          {noticeSaved ? 'Broadcast Published!' : 'Publish to Website'}
+                        </Button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Right: 1-Click Social Media Broadcast Generator */}
+                <div className="lg:col-span-5 bg-panther-900 border border-panther-800 rounded clip-hud p-5 space-y-4 shadow-card-dark flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between border-b border-panther-800 pb-3 mb-3">
+                      <div className="flex items-center gap-2">
+                        <Share2 className="w-4 h-4 text-amber-gold" />
+                        <h3 className="font-orbitron font-bold text-sm text-white uppercase tracking-wider">
+                          1-Click Social Broadcast
+                        </h3>
+                      </div>
+                      <span className="text-[10px] font-mono text-gray-400 uppercase truncate max-w-[130px]">
+                        {activeTournament?.name}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-gray-400 mb-3">
+                      Instantly generate formatted copy ready to paste directly into WhatsApp squads or Discord announcements channels.
+                    </p>
+
+                    {/* Previews & Copy Buttons */}
+                    <div className="space-y-2">
+                      <div className="bg-panther-950 p-3 rounded border border-panther-800 text-[11px] font-mono text-gray-300 whitespace-pre-wrap max-h-36 overflow-y-auto">
+                        {eventInviteText}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleCopyInvite}
+                        className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded text-xs font-rajdhani font-bold uppercase bg-gradient-to-r from-amber-500/20 to-flame-500/20 text-amber-gold border border-amber-500/50 hover:border-amber-400 transition-all hover:scale-[1.01]"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>{copiedInvite ? 'Copied Invitation to Clipboard!' : '1-Click Copy WhatsApp Registration Invite'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleCopyAnnouncement}
+                        className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded text-xs font-rajdhani font-bold uppercase bg-panther-850 hover:bg-panther-800 text-gray-300 border border-panther-700 transition-colors"
+                      >
+                        <Key className="w-3.5 h-3.5 text-flame-400" />
+                        <span>{copiedAnnouncement ? 'Copied Room Pass!' : 'Copy Room Pass & Rules Broadcast'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-panther-800/80 flex items-center justify-between text-[11px] text-gray-400">
+                    <span>Target Event: <strong className="text-white uppercase">{activeTournament?.name}</strong></span>
+                    <Badge status={activeTournament?.status || 'upcoming'} size="sm" />
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. TOURNAMENTS & EVENTS DIRECTORY */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-flame-400" />
+                    <h3 className="font-orbitron font-bold text-base text-white uppercase tracking-wide">
+                      All Registered Tournaments ({tournaments.length})
+                    </h3>
+                  </div>
+                  <span className="text-xs text-gray-400 font-rajdhani font-semibold">
+                    Click any event to inspect slots, approve UTR payments, or dispatch custom room credentials.
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {tournaments.map((tourney) => {
+                    const isSelected = tourney.id === activeTournament?.id;
+                    const tourneySlotsList = slots.filter(s => s.tournament_id === tourney.id);
+                    const bookedCount = tourneySlotsList.filter(s => s.status === 'booked' || s.team_id).length;
+                    const totalSlots = tourney.total_slots || 12;
+                    const percent = Math.round((bookedCount / totalSlots) * 100);
+
+                    return (
+                      <div
+                        key={tourney.id}
+                        className={`bg-panther-900 border rounded clip-hud p-4 space-y-3 transition-all flex flex-col justify-between ${
+                          isSelected
+                            ? 'border-flame-500 shadow-[0_0_15px_rgba(255,77,0,0.2)] bg-gradient-to-b from-panther-900 to-panther-850'
+                            : 'border-panther-800 hover:border-panther-700'
+                        }`}
+                      >
+                        <div>
+                          {/* Banner & Badge */}
+                          <div className="relative h-28 rounded overflow-hidden mb-3 border border-panther-800">
+                            <img
+                              src={tourney.banner_url || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=600&q=80'}
+                              alt={tourney.name}
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-panther-950 via-transparent to-transparent" />
+                            <div className="absolute top-2 left-2">
+                              <Badge status={tourney.status} size="sm" />
+                            </div>
+                            <div className="absolute top-2 right-2 bg-panther-950/90 border border-panther-700 text-amber-gold font-mono text-[10px] px-2 py-0.5 rounded font-bold">
+                              ₹{tourney.prize_pool} PRIZE
+                            </div>
+                            <div className="absolute bottom-2 left-2 text-[10px] font-rajdhani font-bold uppercase text-gray-300">
+                              {tourney.mode} • {tourney.map}
+                            </div>
+                          </div>
+
+                          <h4 className="font-orbitron font-bold text-sm text-white uppercase line-clamp-1">
+                            {tourney.name}
+                          </h4>
+
+                          <div className="flex items-center gap-3 text-xs text-gray-400 font-rajdhani mt-1">
+                            <span>📅 {tourney.date}</span>
+                            <span>⏰ {tourney.time} IST</span>
+                            <span>🎟️ {tourney.entry_fee ? `₹${tourney.entry_fee}` : 'FREE'}</span>
+                          </div>
+
+                          {/* Occupancy Progress */}
+                          <div className="mt-3 space-y-1">
+                            <div className="flex items-center justify-between text-[11px] font-mono">
+                              <span className="text-gray-400">Slot Occupancy:</span>
+                              <span className="text-amber-gold font-bold">{bookedCount}/{totalSlots} ({percent}%)</span>
+                            </div>
+                            <div className="w-full h-1.5 bg-panther-950 rounded-full overflow-hidden border border-panther-800">
+                              <div
+                                className="h-full bg-gradient-to-r from-flame-500 to-amber-gold transition-all"
+                                style={{ width: `${percent}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Event Card Actions */}
+                        <div className="pt-3 border-t border-panther-800/80 flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTourneyId(tourney.id);
+                              setActiveSection('slots');
+                            }}
+                            className={`flex-1 py-1.5 px-2 rounded text-xs font-rajdhani font-bold uppercase transition-colors flex items-center justify-center gap-1 ${
+                              isSelected
+                                ? 'bg-flame-500 hover:bg-flame-600 text-white shadow-flame-sm'
+                                : 'bg-panther-800 hover:bg-panther-700 text-gray-200'
+                            }`}
+                          >
+                            <span>Manage Slots</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Status cycle button */}
+                          <button
+                            type="button"
+                            title="Cycle status: upcoming -> live -> completed"
+                            onClick={() => {
+                              const nextStatus = tourney.status === 'upcoming' ? 'live' : (tourney.status === 'live' ? 'completed' : 'upcoming');
+                              updateTournamentStatus(tourney.id, nextStatus, user?.displayName || 'StaffAdmin');
+                            }}
+                            className="px-2 py-1.5 rounded text-[10px] font-mono uppercase bg-panther-950 hover:bg-panther-800 text-gray-300 border border-panther-800"
+                          >
+                            {tourney.status}
+                          </button>
+
+                          {/* Delete option if not active */}
+                          {tournaments.length > 1 && (
+                            <button
+                              type="button"
+                              title="Delete Tournament"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to delete tournament "${tourney.name}"? This action cannot be undone.`)) {
+                                  deleteTournament(tourney.id, user?.displayName || 'StaffAdmin');
+                                  if (selectedTourneyId === tourney.id) {
+                                    const remaining = tournaments.filter(t => t.id !== tourney.id);
+                                    if (remaining[0]) setSelectedTourneyId(remaining[0].id);
+                                  }
+                                }
+                              }}
+                              className="p-1.5 rounded text-gray-500 hover:text-red-400 hover:bg-red-950/50 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
           {activeSection === 'slots' && (
             <div className="space-y-6 animate-in fade-in duration-200">
               {/* Controls Toolbar */}
@@ -1986,6 +2479,318 @@ _Panthers Esports Tournament Control_`;
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 5. ANNOUNCE & HOST NEW EVENT MODAL */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-panther-900 border border-flame-500/60 rounded clip-hud p-6 max-w-2xl w-full shadow-2xl space-y-5 animate-in zoom-in-95 duration-150 my-8">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-panther-800 pb-3">
+              <div>
+                <span className="text-[10px] font-orbitron font-bold text-flame-400 uppercase tracking-widest block mb-0.5">
+                  Esports Operations Center
+                </span>
+                <h3 className="font-orbitron font-black text-lg text-white uppercase tracking-wide">
+                  Host & Announce New Tournament
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="text-gray-400 hover:text-white text-xs font-bold uppercase p-1"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* Quick Presets */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-mono text-gray-400 uppercase tracking-widest block">
+                ⚡ 1-Click Tournament Presets:
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewEventData(prev => ({
+                      ...prev,
+                      name: 'Panthers Tri-Map Championship — 3 Matches',
+                      mode: 'Squad (4v4)',
+                      map: 'Bermuda, Purgatory & Kalahari',
+                      entry_fee: 50,
+                      prize_pool: 400,
+                      total_slots: 12,
+                    }));
+                  }}
+                  className="p-2 rounded bg-panther-950 hover:bg-panther-800 border border-panther-800 text-[11px] font-rajdhani font-bold text-left text-gray-300 hover:text-white transition-colors"
+                >
+                  <span className="text-flame-400 block font-mono text-[9px]">3 MAPS</span>
+                  Tri-Map Cup
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewEventData(prev => ({
+                      ...prev,
+                      name: 'Panthers Weekend Booyah Clash',
+                      mode: 'Squad (4v4)',
+                      map: 'Bermuda',
+                      entry_fee: 100,
+                      prize_pool: 1000,
+                      total_slots: 12,
+                    }));
+                  }}
+                  className="p-2 rounded bg-panther-950 hover:bg-panther-800 border border-panther-800 text-[11px] font-rajdhani font-bold text-left text-gray-300 hover:text-white transition-colors"
+                >
+                  <span className="text-amber-gold block font-mono text-[9px]">₹1,000 PRIZE</span>
+                  Weekend Clash
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewEventData(prev => ({
+                      ...prev,
+                      name: 'Panthers Night Customs 4v4 Showdown',
+                      mode: 'Clash Squad (4v4)',
+                      map: 'Bermuda',
+                      entry_fee: 40,
+                      prize_pool: 300,
+                      total_slots: 12,
+                    }));
+                  }}
+                  className="p-2 rounded bg-panther-950 hover:bg-panther-800 border border-panther-800 text-[11px] font-rajdhani font-bold text-left text-gray-300 hover:text-white transition-colors"
+                >
+                  <span className="text-cyan-400 block font-mono text-[9px]">CLASH SQUAD</span>
+                  Night CS 4v4
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewEventData(prev => ({
+                      ...prev,
+                      name: 'Panthers Daily Pro Customs Series',
+                      mode: 'Squad (4v4)',
+                      map: 'Purgatory',
+                      entry_fee: 30,
+                      prize_pool: 250,
+                      total_slots: 12,
+                    }));
+                  }}
+                  className="p-2 rounded bg-panther-950 hover:bg-panther-800 border border-panther-800 text-[11px] font-rajdhani font-bold text-left text-gray-300 hover:text-white transition-colors"
+                >
+                  <span className="text-emerald-400 block font-mono text-[9px]">DAILY RUSH</span>
+                  Daily Pro Scrim
+                </button>
+              </div>
+            </div>
+
+            {/* Event Form */}
+            <form onSubmit={handleCreateEventSubmit} className="space-y-4">
+              {/* Event Name */}
+              <div>
+                <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                  Tournament / Event Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Panthers Free Fire Tri-Map Series Season 2"
+                  value={newEventData.name}
+                  onChange={(e) => setNewEventData(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full bg-panther-950 border border-panther-700 rounded px-3 py-2 text-xs text-white font-rajdhani font-bold focus:outline-none focus:border-flame-500"
+                />
+              </div>
+
+              {/* Mode, Map & Slots */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                    Game Mode
+                  </label>
+                  <select
+                    value={newEventData.mode}
+                    onChange={(e) => setNewEventData(prev => ({ ...prev, mode: e.target.value }))}
+                    className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white font-rajdhani font-semibold focus:outline-none focus:border-flame-500"
+                  >
+                    <option value="Squad (4v4)">Squad (4v4)</option>
+                    <option value="Duo">Duo</option>
+                    <option value="Solo">Solo</option>
+                    <option value="Clash Squad (4v4)">Clash Squad (4v4)</option>
+                    <option value="Squad / Duo">Squad / Duo</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                    Battle Map
+                  </label>
+                  <select
+                    value={newEventData.map}
+                    onChange={(e) => setNewEventData(prev => ({ ...prev, map: e.target.value }))}
+                    className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white font-rajdhani font-semibold focus:outline-none focus:border-flame-500"
+                  >
+                    <option value="Bermuda, Purgatory & Kalahari">Bermuda, Purgatory & Kalahari (3-Map)</option>
+                    <option value="Bermuda">Bermuda Only</option>
+                    <option value="Purgatory">Purgatory Only</option>
+                    <option value="Kalahari">Kalahari Only</option>
+                    <option value="Alpine">Alpine</option>
+                    <option value="NexTerra">NexTerra</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                    Total Slots
+                  </label>
+                  <select
+                    value={newEventData.total_slots}
+                    onChange={(e) => setNewEventData(prev => ({ ...prev, total_slots: parseInt(e.target.value, 10) }))}
+                    className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-flame-500"
+                  >
+                    <option value="12">12 Slots (FF BR Standard)</option>
+                    <option value="16">16 Slots</option>
+                    <option value="24">24 Slots</option>
+                    <option value="48">48 Slots</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Schedule Date & Time */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                    Match Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={newEventData.date}
+                    onChange={(e) => setNewEventData(prev => ({ ...prev, date: e.target.value }))}
+                    className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-flame-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                    Start Time (IST) *
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={newEventData.time}
+                    onChange={(e) => setNewEventData(prev => ({ ...prev, time: e.target.value }))}
+                    className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-flame-500"
+                  />
+                </div>
+              </div>
+
+              {/* Entry Fee & Prize Pool */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-panther-950 p-3 rounded border border-panther-800">
+                <div>
+                  <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                    Squad Entry Fee (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="10"
+                    value={newEventData.entry_fee}
+                    onChange={(e) => setNewEventData(prev => ({ ...prev, entry_fee: e.target.value }))}
+                    className="w-full bg-panther-900 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-flame-500"
+                  />
+                  <span className="text-[10px] text-gray-500 block mt-0.5">Enter 0 for Free Tournament</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-rajdhani font-bold text-amber-gold uppercase mb-1">
+                    Total Prize Pool (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="50"
+                    value={newEventData.prize_pool}
+                    onChange={(e) => setNewEventData(prev => ({ ...prev, prize_pool: e.target.value }))}
+                    className="w-full bg-panther-900 border border-amber-500/50 rounded px-2.5 py-1.5 text-xs text-amber-300 font-mono font-bold focus:outline-none focus:border-amber-400"
+                  />
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-gray-400 mt-1">
+                    <span>1st: ₹{Math.round((parseFloat(newEventData.prize_pool) || 0) * 0.5)}</span>
+                    <span>•</span>
+                    <span>2nd: ₹{Math.round((parseFloat(newEventData.prize_pool) || 0) * 0.3)}</span>
+                    <span>•</span>
+                    <span>3rd: ₹{Math.round((parseFloat(newEventData.prize_pool) || 0) * 0.2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Banner Poster Presets */}
+              <div>
+                <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                  Banner Poster URL
+                </label>
+                <input
+                  type="url"
+                  value={newEventData.banner_url}
+                  onChange={(e) => setNewEventData(prev => ({ ...prev, banner_url: e.target.value }))}
+                  className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-flame-500 mb-1"
+                />
+                <div className="flex items-center gap-2 text-[10px] font-rajdhani font-semibold text-gray-400">
+                  <span>Presets:</span>
+                  <button
+                    type="button"
+                    onClick={() => setNewEventData(prev => ({ ...prev, banner_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80' }))}
+                    className="text-flame-400 hover:underline"
+                  >
+                    Battle Royale Neon
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => setNewEventData(prev => ({ ...prev, banner_url: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1200&q=80' }))}
+                    className="text-amber-gold hover:underline"
+                  >
+                    Championship Trophy
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => setNewEventData(prev => ({ ...prev, banner_url: 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?auto=format&fit=crop&w=1200&q=80' }))}
+                    className="text-cyan-400 hover:underline"
+                  >
+                    Cyber Arena
+                  </button>
+                </div>
+              </div>
+
+              {/* Description & Rules */}
+              <div>
+                <label className="block text-xs font-rajdhani font-bold text-gray-300 uppercase mb-1">
+                  Event Description
+                </label>
+                <input
+                  type="text"
+                  value={newEventData.description}
+                  onChange={(e) => setNewEventData(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full bg-panther-950 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-white font-sans focus:outline-none focus:border-flame-500"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-3 pt-3 border-t border-panther-800">
+                <Button size="sm" variant="outline" type="button" onClick={() => setShowCreateModal(false)}>
+                  Cancel
+                </Button>
+                <Button size="sm" variant="primary" type="submit" icon={Sparkles}>
+                  🚀 Publish & Announce Tournament
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

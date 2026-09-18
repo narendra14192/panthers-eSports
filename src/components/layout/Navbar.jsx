@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTournaments } from '../../context/TournamentContext';
-import { Trophy, Swords, User, Menu, X, LogIn, LogOut, Shield } from 'lucide-react';
+import { Trophy, Swords, User, Menu, X, LogIn, LogOut, Shield, Megaphone } from 'lucide-react';
 
 export const Navbar = ({ currentTab, setCurrentTab, onSelectTournament }) => {
   const { user, logout } = useAuth();
-  const { slots } = useTournaments();
+  const { slots, announcement } = useTournaments();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Count user's booked slots
@@ -19,6 +19,44 @@ export const Navbar = ({ currentTab, setCurrentTab, onSelectTournament }) => {
 
   return (
     <header className="sticky top-0 z-40 bg-panther-950/90 backdrop-blur-md border-b border-panther-800/80 shadow-lg shadow-black/50">
+      {/* Live Public Announcement Broadcast Bar */}
+      {announcement?.active && announcement?.text && (
+        <div className={`py-1 px-4 text-xs font-rajdhani font-bold border-b transition-all ${
+          announcement.type === 'emerald'
+            ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/50'
+            : announcement.type === 'amber'
+            ? 'bg-amber-950/90 text-amber-300 border-amber-500/50'
+            : 'bg-gradient-to-r from-red-950/90 via-flame-950/90 to-red-950/90 text-white border-flame-500/60 shadow-[0_0_15px_rgba(255,77,0,0.2)]'
+        }`}>
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 overflow-hidden">
+              <span className="flex-shrink-0 flex items-center gap-1 bg-flame-500 text-white text-[9px] font-orbitron font-black px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse">
+                <Megaphone className="w-2.5 h-2.5" />
+                BROADCAST
+              </span>
+              <span className="truncate text-xs sm:text-sm tracking-wide text-gray-200">
+                {announcement.text}
+              </span>
+            </div>
+            {announcement.link ? (
+              <a
+                href={announcement.link}
+                className="flex-shrink-0 underline hover:text-flame-400 text-xs font-rajdhani font-bold uppercase transition-colors"
+              >
+                Details ➔
+              </a>
+            ) : (
+              <button
+                onClick={() => { setCurrentTab('tournaments'); onSelectTournament?.(null); }}
+                className="flex-shrink-0 hidden sm:inline-flex items-center gap-1 text-[11px] font-rajdhani font-bold uppercase text-flame-400 hover:text-white transition-colors"
+              >
+                Browse Events ➔
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Top micro-bar — Live sync status & Admin shortcut */}
       <div className="bg-panther-900 border-b border-panther-800/50 px-4 py-1 text-xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
