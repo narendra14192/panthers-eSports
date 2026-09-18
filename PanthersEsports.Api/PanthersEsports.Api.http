@@ -1,0 +1,6 @@
+@PanthersEsports.Api_HostAddress = http://localhost:5069
+
+GET {{PanthersEsports.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

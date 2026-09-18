@@ -132,18 +132,15 @@ export function subscribeToRegistrations(onUpdate) {
             remoteList.push({ id: docSnap.id, ...docSnap.data() });
           });
 
-          if (remoteList.length > 0) {
-            // Merge with local list to preserve any offline items
-            const local = getLocalRegistrations();
-            const mergedMap = new Map();
-            local.forEach(item => mergedMap.set(item.id, item));
-            remoteList.forEach(item => mergedMap.set(item.id, item));
-            const merged = Array.from(mergedMap.values()).sort(
-              (a, b) => new Date(b.created_at) - new Date(a.created_at)
-            );
-            setLocalRegistrations(merged);
-            onUpdate(merged);
-          }
+          const local = getLocalRegistrations();
+          const mergedMap = new Map();
+          local.forEach(item => mergedMap.set(item.id, item));
+          remoteList.forEach(item => mergedMap.set(item.id, item));
+          const merged = Array.from(mergedMap.values()).sort(
+            (a, b) => new Date(b.created_at) - new Date(a.created_at)
+          );
+          setLocalRegistrations(merged);
+          onUpdate(merged);
         },
         (error) => {
           console.warn('⚠️ Firestore snapshot notice (using local mirror):', error.message);

@@ -14,18 +14,17 @@ service cloud.firestore {
       allow create, update, delete: if request.auth != null;
     }
 
-    // ── Slots — public read, auth write ────────────────────────────────────
-    // Players can book slots (they must be authenticated)
+    // ── Slots — public read, open booking ──────────────────────────────────
     match /slots/{slotId} {
       allow read: if true;
-      allow create, update: if request.auth != null;
+      allow create, update: if true;
       allow delete: if request.auth != null;
     }
 
-    // ── Teams — auth read/write ─────────────────────────────────────────────
+    // ── Teams — public read, squad creation ─────────────────────────────────
     match /teams/{teamId} {
-      allow read: if request.auth != null;
-      allow create, update: if request.auth != null;
+      allow read: if true;
+      allow create, update: if true;
       allow delete: if request.auth != null;
     }
 
@@ -41,14 +40,16 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
-    // ── Admin Logs — auth only ──────────────────────────────────────────────
+    // ── Admin Logs — public readable/writable for audit logging ────────────
     match /admin_logs/{logId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if true;
     }
 
-    // ── Tournament Registrations (UTR/payments) — auth only ────────────────
+    // ── Tournament Registrations (UTR/payments) — public submit & read ─────
     match /tournament_registrations/{regId} {
-      allow read, write: if request.auth != null;
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
     }
   }
 }

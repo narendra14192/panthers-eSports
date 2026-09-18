@@ -41,7 +41,9 @@ export const SlotGrid = ({ tournament, onSelectSlot, selectedSlotNumber }) => {
         {/* Real-time Indicator notice */}
         <div className="flex items-center gap-2 text-xs font-rajdhani text-gray-400">
           <span className="w-2 h-2 rounded-full bg-flame-500 animate-pulse" />
-          <span>Click any open slot to reserve for your squad</span>
+          <span>
+            {user ? 'Click any open slot to reserve for your squad' : 'Sign in to reserve an open slot for your squad'}
+          </span>
         </div>
       </div>
 

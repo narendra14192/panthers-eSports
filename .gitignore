@@ -31,3 +31,12 @@ Thumbs.db
 
 # Vite cache
 .vite/
+
+# .NET / C#
+bin/
+obj/
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+

@@ -2,7 +2,7 @@ export const INITIAL_TOURNAMENTS = [
   {
     id: 'tourney-panthers-tri-map',
     name: 'Panthers Tri-Map Championship — 3 Matches Back-to-Back',
-    description: 'The ultimate Free Fire competitive test! 24 slots battling across Bermuda, Purgatory, and Kalahari in back-to-back matches. Strict Esports Rules Only.',
+    description: 'The ultimate Free Fire competitive test! 12 slots battling across Bermuda, Purgatory, and Kalahari in back-to-back matches. Strict Esports Rules Only.',
     banner_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80',
     mode: 'Squad / Duo',
     map: 'Bermuda, Purgatory & Kalahari',
@@ -21,20 +21,20 @@ export const INITIAL_TOURNAMENTS = [
       '2nd': '₹130 (Runner Up)',
       '3rd': '₹70 (3rd Place)'
     },
-    total_slots: 24,
+    total_slots: 12,
     status: 'upcoming',
     room_id: '8821941',
     room_password: 'PANTHERS_ESPORTS',
     rules: `1. ESPORTS RULES ONLY — Gun skin attributes are strictly OFF (Default weapon stats only).
 2. NO EMULATORS / IPADS — Mobile phone devices only. Emulators, PCs, and tablets are strictly banned.
-3. 3 MATCHES BACK-TO-BACK — All 24 teams will play:
+3. 3 MATCHES BACK-TO-BACK — All 12 teams will play:
    • Match 1: Bermuda
    • Match 2: Purgatory
    • Match 3: Kalahari
 4. OFFICIAL FREE FIRE SCORING:
    • 1st: 12 pts | 2nd: 9 pts | 3rd: 8 pts | 4th: 7 pts | 5th: 6 pts
    • 6th: 5 pts | 7th: 4 pts | 8th: 3 pts | 9th: 2 pts | 10th: 1 pt
-   • 11th–24th: 0 pts
+   • 11th–12th: 0 pts
    • Kill Points: 1 point per kill across all 3 matches.
 5. MANDATORY POV RECORDING — Captain or rusher must screen record the match.
 6. ANTI-CHEAT & ANTI-TEAMING — Zero tolerance. Immediate disqualification without refund.
@@ -140,8 +140,8 @@ export const generateInitialSlots = () => {
   const slots = [];
   const tourneyId = 'tourney-panthers-tri-map';
 
-  // 24 slots total for the Panthers Tri-Map Championship
-  for (let i = 1; i <= 24; i++) {
+  // 12 slots total for the Panthers Tri-Map Championship
+  for (let i = 1; i <= 12; i++) {
     if (i === 1) {
       slots.push({
         id: `slot-${tourneyId}-1`,
@@ -197,7 +197,7 @@ export const generateInitialSlots = () => {
         booked_at: new Date(Date.now() - 3600000 * 2).toISOString()
       });
     } else {
-      // Slots 7 to 24 are wide OPEN for players to book!
+      // Slots 7 to 12 are wide OPEN for players to book!
       slots.push({
         id: `slot-${tourneyId}-${i}`,
         tournament_id: tourneyId,
@@ -321,7 +321,7 @@ export const INITIAL_ADMIN_LOGS = [
     id: 'log-1',
     admin_name: 'PantherAdmin',
     action: 'TOURNAMENT_CREATED',
-    details: 'Created single tournament "Panthers Tri-Map Championship — 3 Matches Back-to-Back" with 24 slots (₹50/slot, Prize: ₹400).',
+    details: 'Created single tournament "Panthers Tri-Map Championship — 3 Matches Back-to-Back" with 12 slots (₹50/slot, Prize: ₹400).',
     timestamp: new Date().toISOString()
   },
   {

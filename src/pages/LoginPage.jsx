@@ -125,8 +125,8 @@ export const LoginPage = ({ onLoginSuccess, onNavigate }) => {
       setError('In-Game Name (IGN) is required.');
       return;
     }
-    if (!/^\d{7,12}$/.test(newUid.trim())) {
-      setError('Free Fire UID must be 7-12 numeric digits.');
+    if (!/^\d{9,12}$/.test(newUid.trim())) {
+      setError('Free Fire UID must be 9-12 numeric digits.');
       return;
     }
     if (!newPhone.trim()) {
@@ -494,9 +494,10 @@ export const LoginPage = ({ onLoginSuccess, onNavigate }) => {
                   <input
                     type="text"
                     required
-                    placeholder="8-12 numeric digits"
+                    placeholder="9-12 numeric digits"
+                    maxLength={12}
                     value={newUid}
-                    onChange={(e) => setNewUid(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => setNewUid(e.target.value.replace(/\D/g, '').slice(0, 12))}
                     className="w-full bg-panther-950 border border-panther-700 rounded px-3 py-2 text-xs text-amber-gold font-mono font-bold focus:outline-none focus:border-flame-500"
                   />
                 </div>

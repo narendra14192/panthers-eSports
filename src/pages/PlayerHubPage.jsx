@@ -74,9 +74,13 @@ export const PlayerHubPage = ({ onNavigate, onSelectTournament }) => {
 
   const handleSaveProfile = (e) => {
     e.preventDefault();
+    if (editedUid && !/^\d{9,12}$/.test(editedUid.trim())) {
+      alert('Free Fire UID must be 9-12 numeric digits.');
+      return;
+    }
     updateProfile({
       in_game_name: editedIgn,
-      free_fire_uid: editedUid,
+      free_fire_uid: editedUid.trim(),
       team_name: editedTeamName,
       team_tag: editedTeamTag,
       team_image: editedTeamImage
@@ -175,11 +179,13 @@ export const PlayerHubPage = ({ onNavigate, onSelectTournament }) => {
               />
             </div>
             <div>
-              <label className="block font-rajdhani font-bold text-gray-400 uppercase mb-1">Free Fire UID</label>
+              <label className="block font-rajdhani font-bold text-gray-400 uppercase mb-1">Free Fire UID (9-12 digits)</label>
               <input
                 type="text"
+                placeholder="9-12 numeric digits"
+                maxLength={12}
                 value={editedUid}
-                onChange={(e) => setEditedUid(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => setEditedUid(e.target.value.replace(/\D/g, '').slice(0, 12))}
                 className="w-full bg-panther-950 border border-panther-700 rounded p-2 text-amber-gold font-mono font-bold focus:outline-none focus:border-flame-500"
               />
             </div>
@@ -308,7 +314,7 @@ export const PlayerHubPage = ({ onNavigate, onSelectTournament }) => {
                 You have not booked a slot in any active Free Fire events yet.
               </p>
               <Button variant="primary" onClick={() => onNavigate('tournaments')} icon={Swords}>
-                Browse 24-Slot Tri-Map Event
+                Browse 12-Slot Tri-Map Event
               </Button>
             </div>
           ) : (

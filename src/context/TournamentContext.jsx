@@ -66,9 +66,9 @@ export const TournamentProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [syncError, setSyncError] = useState(null);
 
-  // Cross-tab channel + anti-spam booking guard
+  // Cross-tab channel + in-flight booking guard
   const broadcastRef = useRef(null);
-  const lastBookingTimeRef = useRef(0);
+  const inFlightBookingsRef = useRef(new Set());
 
   // ── 1. Seed Firestore on first run, then subscribe to all collections ────────
   useEffect(() => {
@@ -95,7 +95,12 @@ export const TournamentProvider = ({ children }) => {
     );
     const unsubSlots = subscribeToCollection(
       'slots', CACHE.SLOTS,
-      (data) => { if (mounted && data.length > 0) setSlots(data); },
+      (data) => {
+        if (mounted && data.length > 0) {
+          const sorted = [...data].sort((a, b) => a.slot_number - b.slot_number);
+          setSlots(sorted);
+        }
+      },
       []
     );
     const unsubTeams = subscribeToCollection(
@@ -296,99 +301,111 @@ export const TournamentProvider = ({ children }) => {
   // ==========================================
   // SLOT BOOKING & MANAGEMENT
   // ==========================================
-  const bookSlot = (tournamentId, slotNumber, teamRegistrationData) => {
-    const now = Date.now();
-    if (now - lastBookingTimeRef.current < 1500) {
-      return { success: false, error: 'Booking too quickly. Please wait a moment.' };
+  const bookSlot = async (tournamentId, slotNumber, teamRegistrationData) => {
+    const slotKey = `${tournamentId}-${slotNumber}`;
+    if (inFlightBookingsRef.current.has(slotKey)) {
+      return { success: false, error: 'Booking already in progress. Please wait a moment...' };
     }
-    lastBookingTimeRef.current = now;
+    inFlightBookingsRef.current.add(slotKey);
 
-    const targetSlot = slots.find(s => s.tournament_id === tournamentId && s.slot_number === slotNumber);
-    if (!targetSlot) return { success: false, error: 'Slot does not exist.' };
-    if (targetSlot.status !== 'open') return { success: false, error: `Slot #${slotNumber} is already taken!` };
+    try {
+      const targetSlot = slots.find(s => s.tournament_id === tournamentId && s.slot_number === slotNumber);
+      if (!targetSlot) return { success: false, error: 'Slot does not exist.' };
+      if (targetSlot.status !== 'open') return { success: false, error: `Slot #${slotNumber} is already taken!` };
 
-    const existingTeamBooking = slots.find(
-      s => s.tournament_id === tournamentId && s.team_id && s.team_id === teamRegistrationData.team_id
-    );
-    if (existingTeamBooking) {
-      return { success: false, error: `Your team is already in Slot #${existingTeamBooking.slot_number}!` };
-    }
+      const existingTeamBooking = slots.find(
+        s => s.tournament_id === tournamentId && s.team_id && s.team_id === teamRegistrationData.team_id
+      );
+      if (existingTeamBooking) {
+        return { success: false, error: `Your team is already in Slot #${existingTeamBooking.slot_number}!` };
+      }
 
-    let registeredTeamId = teamRegistrationData.team_id;
-    if (!registeredTeamId || !teams.find(t => t.id === registeredTeamId)) {
-      registeredTeamId = `team-${Date.now()}`;
-      const newTeam = {
-        id: registeredTeamId,
-        name: teamRegistrationData.team_name,
-        tag: teamRegistrationData.team_tag || teamRegistrationData.team_name.substring(0, 4).toUpperCase(),
-        captain_user_id: teamRegistrationData.captain_user_id || null,
-        captain_name: teamRegistrationData.captain_name,
-        captain_phone: teamRegistrationData.captain_phone,
-        captain_uid: teamRegistrationData.captain_uid,
-        players: teamRegistrationData.players || [],
-        payment: teamRegistrationData.payment || null,
-        created_at: new Date().toISOString(),
+      let registeredTeamId = teamRegistrationData.team_id;
+      let newTeam = null;
+      if (!registeredTeamId || !teams.find(t => t.id === registeredTeamId)) {
+        registeredTeamId = `team-${Date.now()}`;
+        newTeam = {
+          id: registeredTeamId,
+          name: teamRegistrationData.team_name,
+          tag: teamRegistrationData.team_tag || teamRegistrationData.team_name.substring(0, 4).toUpperCase(),
+          captain_user_id: teamRegistrationData.captain_user_id || null,
+          captain_name: teamRegistrationData.captain_name,
+          captain_phone: teamRegistrationData.captain_phone,
+          captain_uid: teamRegistrationData.captain_uid,
+          players: teamRegistrationData.players || [],
+          payment: teamRegistrationData.payment || null,
+          created_at: new Date().toISOString(),
+        };
+
+        setTeams(prev => {
+          const updated = [...prev.filter(t => t.id !== newTeam.id), newTeam];
+          broadcast('TEAMS_UPDATED', updated);
+          return updated;
+        });
+
+        // Persist team to Firestore
+        try {
+          await saveTeam(newTeam);
+        } catch (e) {
+          console.warn('[TournamentContext] saveTeam note:', e.message);
+        }
+      }
+
+      const bookedSlotData = {
+        ...targetSlot,
+        team_id: registeredTeamId,
+        status: 'booked',
+        booked_at: new Date().toISOString(),
       };
 
-      setTeams(prev => {
-        const updated = [...prev, newTeam];
-        broadcast('TEAMS_UPDATED', updated);
+      setSlots(prev => {
+        const updated = prev.map(s => {
+          if (s.tournament_id === tournamentId && s.slot_number === slotNumber) {
+            return bookedSlotData;
+          }
+          return s;
+        }).sort((a, b) => a.slot_number - b.slot_number);
+
+        broadcast('SLOTS_UPDATED', updated);
         return updated;
       });
 
-      // Persist team to Firestore
-      saveTeam(newTeam);
+      // Persist slot to Firestore
+      try {
+        await saveSlot(bookedSlotData);
+      } catch (e) {
+        console.warn('[TournamentContext] saveSlot note:', e.message);
+      }
+
+      // Save full registration (UTR) to Firebase
+      const targetTourney = tournaments.find(t => t.id === tournamentId);
+      try {
+        await saveRegistrationToFirebase({
+          ...teamRegistrationData,
+          tournament_id: tournamentId,
+          tournament_name: targetTourney?.name || 'Panthers Free Fire Tri-Map Series',
+          slot_number: slotNumber,
+          team_id: registeredTeamId,
+        });
+      } catch (err) {
+        console.warn('[TournamentContext] saveRegistrationToFirebase note:', err.message);
+      }
+
+      addAdminLog(
+        'SLOT_BOOKED',
+        `Slot #${slotNumber} secured by "${teamRegistrationData.team_name}" (UTR: ${teamRegistrationData.payment?.utr || 'Pending'}).`,
+        teamRegistrationData.captain_name || 'Player'
+      );
+
+      return {
+        success: true,
+        slot_number: slotNumber,
+        team_id: registeredTeamId,
+        message: `Slot #${slotNumber} secured!`,
+      };
+    } finally {
+      inFlightBookingsRef.current.delete(slotKey);
     }
-
-    // Atomic slot update
-    let slotUpdated = false;
-    let bookedSlotData = null;
-
-    setSlots(prev => {
-      const current = prev.find(s => s.tournament_id === tournamentId && s.slot_number === slotNumber);
-      if (!current || current.status !== 'open') return prev;
-
-      slotUpdated = true;
-      const updated = prev.map(s => {
-        if (s.tournament_id === tournamentId && s.slot_number === slotNumber) {
-          bookedSlotData = {
-            ...s,
-            team_id: registeredTeamId,
-            status: 'booked',
-            booked_at: new Date().toISOString(),
-          };
-          return bookedSlotData;
-        }
-        return s;
-      });
-
-      broadcast('SLOTS_UPDATED', updated);
-      return updated;
-    });
-
-    if (!slotUpdated) {
-      return { success: false, error: `Slot #${slotNumber} was just taken by another player.` };
-    }
-
-    // Persist slot to Firestore
-    if (bookedSlotData) saveSlot(bookedSlotData);
-
-    // Save full registration (UTR) to Firebase
-    const targetTourney = tournaments.find(t => t.id === tournamentId);
-    saveRegistrationToFirebase({
-      ...teamRegistrationData,
-      tournament_id: tournamentId,
-      tournament_name: targetTourney?.name || 'Panthers Free Fire Tri-Map Series',
-      slot_number: slotNumber,
-      team_id: registeredTeamId,
-    }).catch(err => console.warn('Firebase registration sync note:', err));
-
-    return {
-      success: true,
-      slot_number: slotNumber,
-      team_id: registeredTeamId,
-      message: `Slot #${slotNumber} secured!`,
-    };
   };
 
   const freeSlot = (tournamentId, slotNumber, adminName = 'PantherAdmin') => {
@@ -678,9 +695,13 @@ export const TournamentProvider = ({ children }) => {
   };
 
   // ─── Selectors ──────────────────────────────────────────────────────────────
-  const getTournamentSlots = useCallback((tourneyId) =>
-    slots.filter(s => s.tournament_id === tourneyId).sort((a, b) => a.slot_number - b.slot_number),
-  [slots]);
+  const getTournamentSlots = useCallback((tourneyId) => {
+    const tourney = tournaments.find(t => t.id === tourneyId);
+    const maxSlots = tourney?.total_slots || 12;
+    return slots
+      .filter(s => s.tournament_id === tourneyId && s.slot_number <= maxSlots)
+      .sort((a, b) => a.slot_number - b.slot_number);
+  }, [slots, tournaments]);
 
   const getTeamById = useCallback((teamId) =>
     teams.find(t => t.id === teamId) || null,

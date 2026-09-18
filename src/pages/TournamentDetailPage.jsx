@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTournaments } from '../context/TournamentContext';
 import { useAuth } from '../context/AuthContext';
 import { SlotGrid } from '../components/tournament/SlotGrid';
@@ -8,7 +8,7 @@ import { LeaderboardTable } from '../components/leaderboard/LeaderboardTable';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { formatCurrency } from '../lib/scoring';
-import { Calendar, Clock, MapPin, Trophy, Shield, Key, ArrowLeft, Users, AlertCircle, Share2 } from 'lucide-react';
+import { Calendar, Clock, MapPin, Trophy, Shield, Key, ArrowLeft, Users, AlertCircle, Share2, Lock } from 'lucide-react';
 
 export const TournamentDetailPage = ({ tournamentId, onBack, onNavigate }) => {
   const { tournaments, getTournamentSlots, getTournamentLeaderboard } = useTournaments();
@@ -37,7 +37,33 @@ export const TournamentDetailPage = ({ tournamentId, onBack, onNavigate }) => {
   const mySlot = slots.find(s => s.team_id && s.team_id === user?.team_id);
   const tournamentStandings = getTournamentLeaderboard(tournament.id);
 
+  // Resume pending slot selection after login
+  useEffect(() => {
+    if (user && tournament) {
+      try {
+        const pendingRaw = sessionStorage.getItem('panthers_pending_slot');
+        if (pendingRaw) {
+          const { tournamentId: pendingTourneyId, slotNumber } = JSON.parse(pendingRaw);
+          if (pendingTourneyId === tournament.id) {
+            sessionStorage.removeItem('panthers_pending_slot');
+            setSelectedSlotNumber(slotNumber);
+            setIsBookingModalOpen(true);
+          }
+        }
+      } catch { /* ignore */ }
+    }
+  }, [user, tournament]);
+
   const handleSelectSlot = (slotNumber) => {
+    if (!user) {
+      // Not logged in: save intended slot and redirect to login page
+      sessionStorage.setItem('panthers_pending_slot', JSON.stringify({
+        tournamentId: tournament.id,
+        slotNumber
+      }));
+      onNavigate?.('login');
+      return;
+    }
     setSelectedSlotNumber(slotNumber);
     setIsBookingModalOpen(true);
   };
@@ -153,7 +179,14 @@ export const TournamentDetailPage = ({ tournamentId, onBack, onNavigate }) => {
             </div>
           ) : (
             <div className="text-xs font-rajdhani text-gray-400">
-              Select an open slot from the 24 slots below to register
+              {user ? (
+                `Select an open slot from the ${tournament.total_slots || 12} slots below to register`
+              ) : (
+                <span className="flex items-center gap-1.5 text-amber-300 font-semibold">
+                  <Lock className="w-3.5 h-3.5 text-amber-400" />
+                  Sign in or register to select and book a slot
+                </span>
+              )}
             </div>
           )}
         </div>

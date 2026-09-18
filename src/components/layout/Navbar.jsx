@@ -29,7 +29,7 @@ export const Navbar = ({ currentTab, setCurrentTab, onSelectTournament }) => {
             </span>
             <span className="text-panther-600 hidden sm:inline">|</span>
             <span className="text-gray-400 hidden sm:inline text-[11px]">
-              Panthers Free Fire Tri-Map Series • 24 Slots
+              Panthers Free Fire Tri-Map Series • 12 Slots
             </span>
           </div>
 

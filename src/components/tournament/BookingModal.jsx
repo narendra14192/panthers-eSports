@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { useAuth } from '../../context/AuthContext';
@@ -6,7 +6,7 @@ import { useTournaments } from '../../context/TournamentContext';
 import {
   Shield, AlertCircle, CheckCircle2, Flame, Users, Phone, Hash, Plus, Trash2,
   IndianRupee, QrCode, Copy, Check, Smartphone, ArrowRight, ArrowLeft, Clock,
-  BadgeCheck, AlertTriangle, Zap
+  BadgeCheck, AlertTriangle, Zap, Lock
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -130,9 +130,10 @@ function TeamDetailsStep({ data, onChange, user }) {
             <label className="block text-[10px] font-rajdhani font-bold text-gray-400 uppercase mb-1">Free Fire UID *</label>
             <input
               type="text" required
-              placeholder="182947192"
+              placeholder="9-12 digits (e.g. 182947192)"
+              maxLength={12}
               value={captainUid}
-              onChange={e => onChange('captainUid', e.target.value.replace(/\D/g, ''))}
+              onChange={e => onChange('captainUid', e.target.value.replace(/\D/g, '').slice(0, 12))}
               className="w-full bg-panther-900 border border-panther-700 rounded px-2.5 py-1.5 text-xs text-amber-gold focus:outline-none focus:border-flame-500 font-mono font-bold"
             />
           </div>
@@ -193,9 +194,10 @@ function TeamDetailsStep({ data, onChange, user }) {
               <div className="col-span-3">
                 <input
                   type="text" required
-                  placeholder="Free Fire UID"
+                  placeholder="UID (9-12 digits)"
+                  maxLength={12}
                   value={player.uid}
-                  onChange={e => handlePlayerChange(idx, 'uid', e.target.value.replace(/\D/g, ''))}
+                  onChange={e => handlePlayerChange(idx, 'uid', e.target.value.replace(/\D/g, '').slice(0, 12))}
                   className="w-full bg-panther-900 border border-panther-700/80 rounded px-2.5 py-1.5 text-xs text-amber-gold focus:outline-none focus:border-flame-500 font-mono font-bold"
                 />
               </div>
@@ -448,6 +450,7 @@ export const BookingModal = ({
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedUpi, setCopiedUpi] = useState(false);
+  const submittingRef = useRef(false);
 
   // Sync user data on open
   useEffect(() => {
@@ -480,7 +483,7 @@ export const BookingModal = ({
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const validateUID = uid => /^\d{7,12}$/.test(uid.trim());
+  const validateUID = uid => /^\d{9,12}$/.test(uid.trim());
 
   // Step 1 → 2 validation
   const handleNextToPayment = (e) => {
@@ -490,11 +493,11 @@ export const BookingModal = ({
     if (!formData.teamTag.trim()) { setError('Please enter a Clan Tag (2-5 chars).'); return; }
     if (!formData.captainName.trim()) { setError('Captain In-Game Name is required.'); return; }
     if (!formData.captainPhone.trim()) { setError('Captain WhatsApp number is required.'); return; }
-    if (!validateUID(formData.captainUid)) { setError('Captain Free Fire UID must be 7-12 numeric digits.'); return; }
+    if (!validateUID(formData.captainUid)) { setError('Captain Free Fire UID must be 9-12 numeric digits.'); return; }
     for (let i = 0; i < formData.players.length; i++) {
       const p = formData.players[i];
       if (!p.name.trim()) { setError(`Player #${i + 2} In-Game Name is required.`); return; }
-      if (!validateUID(p.uid)) { setError(`Player #${i + 2} (${p.name || 'Member'}) Free Fire UID must be 7-12 digits.`); return; }
+      if (!validateUID(p.uid)) { setError(`Player #${i + 2} (${p.name || 'Member'}) Free Fire UID must be 9-12 numeric digits.`); return; }
     }
     setStep(2);
   };
@@ -511,58 +514,69 @@ export const BookingModal = ({
   };
 
   // Final Submit
-  const handleFinalSubmit = (e) => {
+  const handleFinalSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    if (submittingRef.current || isSubmitting) return;
+    submittingRef.current = true;
     setIsSubmitting(true);
+    setError('');
 
-    const squadRoster = [
-      { name: formData.captainName.trim(), uid: formData.captainUid.trim(), role: formData.captainRole },
-      ...formData.players.map((p, i) => ({ name: p.name.trim(), uid: p.uid.trim(), role: p.role || `Player #${i + 2}` }))
-    ];
-
-    const registrationData = {
-      team_id: user?.team_id || null,
-      team_name: formData.teamName.trim(),
-      team_tag: formData.teamTag.trim().toUpperCase(),
-      captain_user_id: user?.id,
-      captain_name: formData.captainName.trim(),
-      captain_phone: formData.captainPhone.trim(),
-      captain_uid: formData.captainUid.trim(),
-      players: squadRoster,
-      payment: {
-        utr: utr.trim(),
-        amount: tournament?.entry_fee || 50,
-        method: 'UPI',
-        status: 'pending_verification',
-        submitted_at: new Date().toISOString(),
-      }
-    };
-
-    const result = bookSlot(tournament.id, slotNumber, registrationData);
-    setIsSubmitting(false);
-
-    if (!result.success) {
-      setError(result.error);
-      return;
-    }
-
-    // 🎉 Confetti
     try {
-      confetti({ particleCount: 90, spread: 75, origin: { y: 0.6 }, colors: ['#FF4D00', '#FFB800', '#00F0FF'] });
-    } catch { /* ignore */ }
+      const squadRoster = [
+        { name: formData.captainName.trim(), uid: formData.captainUid.trim(), role: formData.captainRole },
+        ...formData.players.map((p, i) => ({ name: p.name.trim(), uid: p.uid.trim(), role: p.role || `Player #${i + 2}` }))
+      ];
 
-    onBookingSuccess({
-      slotNumber,
-      tournament,
-      teamName: registrationData.team_name,
-      teamTag: registrationData.team_tag,
-      captainName: registrationData.captain_name,
-      roster: squadRoster,
-      utr: utr.trim(),
-    });
+      const registrationData = {
+        team_id: user?.team_id || null,
+        team_name: formData.teamName.trim(),
+        team_tag: formData.teamTag.trim().toUpperCase(),
+        captain_user_id: user?.id || null,
+        captain_name: formData.captainName.trim(),
+        captain_phone: formData.captainPhone.trim(),
+        captain_uid: formData.captainUid.trim(),
+        players: squadRoster,
+        payment: {
+          utr: utr.trim(),
+          amount: tournament?.entry_fee || 50,
+          method: 'UPI',
+          status: 'pending_verification',
+          submitted_at: new Date().toISOString(),
+        }
+      };
 
-    onClose();
+      const result = await bookSlot(tournament.id, slotNumber, registrationData);
+
+      if (!result?.success) {
+        setError(result?.error || 'Booking failed. Please try again.');
+        setIsSubmitting(false);
+        submittingRef.current = false;
+        return;
+      }
+
+      // 🎉 Confetti
+      try {
+        confetti({ particleCount: 90, spread: 75, origin: { y: 0.6 }, colors: ['#FF4D00', '#FFB800', '#00F0FF'] });
+      } catch { /* ignore */ }
+
+      onBookingSuccess({
+        slotNumber,
+        tournament,
+        teamName: registrationData.team_name,
+        teamTag: registrationData.team_tag,
+        captainName: registrationData.captain_name,
+        roster: squadRoster,
+        utr: utr.trim(),
+      });
+
+      onClose();
+    } catch (err) {
+      console.error('Booking submission error:', err);
+      setError(err?.message || 'Failed to submit booking. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+      submittingRef.current = false;
+    }
   };
 
   const handleCopyUpi = () => {
@@ -576,6 +590,44 @@ export const BookingModal = ({
     if (step === 2) return `PAYMENT // SLOT #${String(slotNumber).padStart(2, '0')}`;
     return `CONFIRM & LOCK // SLOT #${String(slotNumber).padStart(2, '0')}`;
   };
+
+  if (!user && isOpen) {
+    return (
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title="SIGN IN REQUIRED"
+        subtitle="Authentication is required to book a tournament slot"
+        maxWidth="max-w-md"
+      >
+        <div className="p-4 text-center space-y-4">
+          <div className="w-12 h-12 rounded-full bg-flame-500/20 text-flame-400 flex items-center justify-center mx-auto border border-flame-500/40">
+            <Lock className="w-6 h-6" />
+          </div>
+          <h3 className="font-orbitron font-bold text-white text-base">Please Sign In or Register</h3>
+          <p className="text-xs text-gray-400">
+            You must have a registered player profile to secure Slot #{String(slotNumber).padStart(2, '0')}.
+          </p>
+          <div className="flex items-center justify-center gap-3 pt-2 border-t border-panther-800">
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                sessionStorage.setItem('panthers_pending_slot', JSON.stringify({
+                  tournamentId: tournament?.id,
+                  slotNumber
+                }));
+                onClose();
+                window.location.hash = '#/login';
+              }}
+            >
+              Sign In / Register
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal
@@ -643,7 +695,14 @@ export const BookingModal = ({
               disabled={isSubmitting}
               className="min-w-[200px] justify-center"
             >
-              {isSubmitting ? 'Locking Slot...' : `🔒 Lock Slot #${slotNumber} — Confirm`}
+              {isSubmitting ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Locking Slot...</span>
+                </span>
+              ) : (
+                `🔒 Lock Slot #${slotNumber} — Confirm`
+              )}
             </Button>
           </div>
         </form>

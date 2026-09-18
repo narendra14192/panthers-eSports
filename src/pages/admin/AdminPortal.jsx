@@ -112,9 +112,11 @@ export const AdminPortal = ({ onExitToPublic }) => {
 
   if (!activeTournament) return null;
 
-  // Filter tournament slots
-  const tourneySlots = slots.filter(s => s.tournament_id === activeTournament.id);
-  const totalSlotsCount = activeTournament.total_slots || 24;
+  // Filter tournament slots (strictly sorted by slot_number 1..12)
+  const tourneySlots = slots
+    .filter(s => s.tournament_id === activeTournament.id && s.slot_number <= (activeTournament.total_slots || 12))
+    .sort((a, b) => a.slot_number - b.slot_number);
+  const totalSlotsCount = activeTournament.total_slots || 12;
   const bookedSlots = tourneySlots.filter(s => s.status !== 'open');
   const checkedInSlots = tourneySlots.filter(s => s.status === 'checked_in');
   const openSlots = tourneySlots.filter(s => s.status === 'open');
@@ -259,7 +261,7 @@ export const AdminPortal = ({ onExitToPublic }) => {
   // Generate WhatsApp / Discord announcement
   const announcementText = `🔥 *PANTHERS ESPORTS — 3-MAP CHAMPIONSHIP* 🔥
 ━━━━━━━━━━━━━━━━━━━━
-🏆 *Format:* 3 Matches Back-to-Back (24 Slots)
+🏆 *Format:* 3 Matches Back-to-Back (12 Slots)
 📍 *Match 1:* Bermuda (19:00 IST)
 📍 *Match 2:* Purgatory (19:45 IST)
 📍 *Match 3:* Kalahari (20:30 IST)
@@ -300,7 +302,7 @@ _Panthers Esports Tournament Control_`;
     // Check duplicate placements
     const placements = roundScores.map(r => r.placement);
     if (new Set(placements).size !== placements.length) {
-      setScoreError('Duplicate placements detected! Each squad must have a unique rank (1 to 24).');
+      setScoreError('Duplicate placements detected! Each squad must have a unique rank (1 to 12).');
       return;
     }
 
@@ -396,7 +398,7 @@ _Panthers Esports Tournament Control_`;
 
           {[
             { id: 'dashboard', label: 'Operations Hub', icon: LayoutDashboard, badge: `${occupancyPercent}%` },
-            { id: 'slots', label: '24-Slot Commander', icon: Grid3X3, count: bookedSlots.length },
+            { id: 'slots', label: '12-Slot Commander', icon: Grid3X3, count: bookedSlots.length },
             { 
               id: 'payments', 
               label: 'UTR & Approvals', 
@@ -490,7 +492,7 @@ _Panthers Esports Tournament Control_`;
                   <div className="flex items-center gap-2 mb-1">
                     <Badge status={activeTournament.status} size="sm" />
                     <span className="text-xs font-rajdhani font-bold text-flame-400 uppercase">
-                      24-Slot Competitive BR Series
+                      12-Slot Competitive BR Series
                     </span>
                   </div>
                   <h2 className="text-xl sm:text-2xl font-orbitron font-black text-white uppercase">
@@ -658,7 +660,7 @@ _Panthers Esports Tournament Control_`;
             </div>
           )}
 
-          {/* SECTION B: 24-SLOT COMMANDER */}
+          {/* SECTION B: 12-SLOT COMMANDER */}
           {activeSection === 'slots' && (
             <div className="space-y-6 animate-in fade-in duration-200">
               {/* Controls Toolbar */}
@@ -721,7 +723,7 @@ _Panthers Esports Tournament Control_`;
                 <div className="flex flex-wrap items-center gap-2 border-t border-panther-800/80 pt-3 text-xs font-rajdhani font-bold">
                   <span className="text-gray-400">Filter By Status:</span>
                   {[
-                    { id: 'ALL', label: `All 24 Slots (${tourneySlots.length})` },
+                    { id: 'ALL', label: `All ${totalSlotsCount} Slots (${tourneySlots.length})` },
                     { id: 'OPEN', label: `Available Open (${openSlots.length})` },
                     { id: 'BOOKED', label: `Booked (${bookedSlots.length})` },
                     { id: 'CHECKED_IN', label: `Checked In (${checkedInSlots.length})` },
@@ -1111,7 +1113,7 @@ _Panthers Esports Tournament Control_`;
                               <input
                                 type="number"
                                 min={1}
-                                max={24}
+                                max={12}
                                 required
                                 value={row.placement}
                                 onChange={(e) => handleScoreChange(row.team_id, 'placement', e.target.value)}

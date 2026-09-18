@@ -30,7 +30,11 @@ export default defineConfig({
   plugins: [react(), adminRewritePlugin()],
   server: {
     port: 3000,
-    open: false
+    open: false,
+    watch: {
+      // Exclude the C# backend folder from Vite's file watcher
+      ignored: ['**/PanthersEsports.Api/**', '**/*.tmp', '**/obj/**', '**/bin/**']
+    }
   },
   build: {
     rollupOptions: {

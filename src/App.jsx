@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { TournamentProvider } from './context/TournamentContext';
+import { TournamentProvider, useTournaments } from './context/TournamentContext';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { HomePage } from './pages/HomePage';
@@ -15,6 +15,7 @@ import { ChatBot } from './components/common/ChatBot';
 
 export function AppContent() {
   const { user, isAdmin } = useAuth();
+  const { tournaments } = useTournaments();
 
   // Support distinct URL hash routing for dedicated separate Admin and Player pages
   const [currentTab, setCurrentTab] = useState(() => {
@@ -107,8 +108,22 @@ export function AppContent() {
         {currentTab === 'login' && (
           <LoginPage
             onLoginSuccess={(role) => {
-              if (role === 'admin') handleNavigate('admin');
-              else handleNavigate('player');
+              if (role === 'admin') {
+                handleNavigate('admin');
+                return;
+              }
+              const pendingSlotRaw = sessionStorage.getItem('panthers_pending_slot');
+              if (pendingSlotRaw) {
+                try {
+                  const { tournamentId } = JSON.parse(pendingSlotRaw);
+                  const targetTourney = tournaments.find(t => t.id === tournamentId);
+                  if (targetTourney) {
+                    handleSelectTournament(targetTourney);
+                    return;
+                  }
+                } catch (e) { /* ignore */ }
+              }
+              handleNavigate('player');
             }}
             onNavigate={handleNavigate}
           />

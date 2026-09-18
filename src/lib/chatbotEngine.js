@@ -14,7 +14,7 @@ function buildSystemPrompt(context = {}) {
 
   const openSlots = slots.filter(s => s.status === 'open').length;
   const bookedSlots = slots.filter(s => s.status !== 'open').length;
-  const totalSlots = tournament?.total_slots || 24;
+  const totalSlots = tournament?.total_slots || 12;
 
   const leaderboardText = leaderboard.length > 0
     ? leaderboard.slice(0, 5).map((t, i) =>
@@ -72,7 +72,7 @@ OFFICIAL RULES:
 - Late joins = missed match, no refund
 
 SCORING SYSTEM:
-- Placement Points: 1st=12, 2nd=9, 3rd=8, 4th=7, 5th=6, 6th=5, 7th=4, 8th=3, 9th=2, 10th=1, 11th-24th=0
+- Placement Points: 1st=12, 2nd=9, 3rd=8, 4th=7, 5th=6, 6th=5, 7th=4, 8th=3, 9th=2, 10th=1, 11th-12th=0
 - Kill Points: 1 point per kill across all 3 matches
 - Winner = Highest total across all 3 maps
 
@@ -214,7 +214,7 @@ export function generateResponse(message, context = {}) {
   const { tournament, slots = [], leaderboard = [], user } = context;
   const intent = detectIntent(message);
   const openSlots = slots.filter(s => s.status === 'open').length;
-  const totalSlots = tournament?.total_slots || 24;
+  const totalSlots = tournament?.total_slots || 12;
 
   switch (intent) {
     case 'greeting':
@@ -255,7 +255,7 @@ export function generateResponse(message, context = {}) {
       };
     case 'maps':
       return {
-        text: `🗺️ **3 Maps Back-to-Back:**\n\n🟡 **19:00** — Bermuda\n🔴 **19:45** — Purgatory\n🏜️ **20:30** — Kalahari\n\nAll 24 teams play all 3 maps. Points decide winner! 🏆`,
+        text: `🗺️ **3 Maps Back-to-Back:**\n\n🟡 **19:00** — Bermuda\n🔴 **19:45** — Purgatory\n🏜️ **20:30** — Kalahari\n\nAll 12 teams play all 3 maps. Points decide winner! 🏆`,
         quickReplies: ['📊 Scoring System', '🏆 Prizes', '📜 Rules'],
       };
     case 'schedule':
