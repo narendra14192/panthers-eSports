@@ -233,8 +233,9 @@ export const AdminPortal = ({ onExitToPublic }) => {
 
   // Revenue & Metrics
   const occupancyPercent = Math.round((bookedSlots.length / totalSlotsCount) * 100);
-  const entryFee = activeTournament.entry_fee || 50;
+  const entryFee = activeTournament?.entry_fee || 50;
   const totalRevenueCollected = bookedSlots.length * entryFee;
+  const totalPotentialRevenue = totalSlotsCount * entryFee;
   // ── Unified Registrations & Approvals (Merged across Firebase & context slots) ──
   const allRegistrationsMap = new Map();
 
