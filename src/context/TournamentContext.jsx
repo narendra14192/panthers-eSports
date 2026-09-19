@@ -394,11 +394,42 @@ export const TournamentProvider = ({ children }) => {
       if (!targetSlot) return { success: false, error: 'Slot does not exist.' };
       if (targetSlot.status !== 'open') return { success: false, error: `Slot #${slotNumber} is already taken!` };
 
-      const existingTeamBooking = slots.find(
-        s => s.tournament_id === tournamentId && s.team_id && s.team_id === teamRegistrationData.team_id
-      );
-      if (existingTeamBooking) {
-        return { success: false, error: `Your team is already in Slot #${existingTeamBooking.slot_number}!` };
+      // ── Enforce 1 Slot Per Person / Team Policy ──
+      const cleanDigits = p => String(p || '').replace(/\D/g, '').slice(-10);
+      const reqPhone = cleanDigits(teamRegistrationData.captain_phone);
+      const reqUid = String(teamRegistrationData.captain_uid || '').trim();
+      const reqName = String(teamRegistrationData.team_name || '').trim().toLowerCase();
+
+      const existingSlot = slots.find(s => {
+        if (s.tournament_id !== tournamentId || s.status === 'open' || !s.team_id) return false;
+        if (teamRegistrationData.team_id && s.team_id === teamRegistrationData.team_id) return true;
+
+        const team = teams.find(t => t.id === s.team_id);
+        if (team) {
+          if (teamRegistrationData.captain_user_id && team.captain_user_id && team.captain_user_id === teamRegistrationData.captain_user_id) return true;
+          if (reqUid && team.captain_uid && team.captain_uid.trim() === reqUid) return true;
+          if (reqPhone && team.captain_phone && cleanDigits(team.captain_phone) === reqPhone) return true;
+          if (reqName && team.name && team.name.trim().toLowerCase() === reqName) return true;
+        }
+
+        const reg = (registrations || []).find(
+          r => (r.tournament_id === tournamentId || !r.tournament_id) && Number(r.slot_number) === Number(s.slot_number)
+        );
+        if (reg) {
+          if (teamRegistrationData.captain_user_id && reg.captain_user_id && reg.captain_user_id === teamRegistrationData.captain_user_id) return true;
+          if (reqUid && reg.captain_uid && reg.captain_uid.trim() === reqUid) return true;
+          if (reqPhone && reg.captain_phone && cleanDigits(reg.captain_phone) === reqPhone) return true;
+          if (reqName && reg.team_name && reg.team_name.trim().toLowerCase() === reqName) return true;
+        }
+
+        return false;
+      });
+
+      if (existingSlot) {
+        return {
+          success: false,
+          error: `Only 1 slot per player is allowed! You already secured Slot #${String(existingSlot.slot_number).padStart(2, '0')} for this tournament.`
+        };
       }
 
       let registeredTeamId = teamRegistrationData.team_id;

@@ -438,9 +438,46 @@ export const BookingModal = ({
   isOpen, onClose, tournament, slotNumber, onBookingSuccess
 }) => {
   const { user } = useAuth();
-  const { bookSlot } = useTournaments();
+  const { bookSlot, getTournamentSlots, getTeamById, registrations } = useTournaments();
 
   const [step, setStep] = useState(1); // 1=team details, 2=payment, 3=confirm
+
+  // Comprehensive player slot check for 1-slot limit
+  const allSlots = getTournamentSlots ? getTournamentSlots(tournament?.id) : [];
+  const cleanDigits = p => String(p || '').replace(/\D/g, '').slice(-10);
+  const userPhone = cleanDigits(user?.phone);
+  const userUid = String(user?.free_fire_uid || '').trim();
+  const userTeam = String(user?.team_name || '').trim().toLowerCase();
+
+  const existingSlot = allSlots.find(s => {
+    if (s.status === 'open' || !s.team_id || Number(s.slot_number) === Number(slotNumber)) return false;
+    if (user?.team_id && s.team_id === user.team_id) return true;
+
+    const team = getTeamById ? getTeamById(s.team_id) : null;
+    if (team) {
+      if (user?.id && team.captain_user_id === user.id) return true;
+      if (userUid && team.captain_uid && team.captain_uid.trim() === userUid) return true;
+      if (userPhone && team.captain_phone && cleanDigits(team.captain_phone) === userPhone) return true;
+      if (userTeam && team.name && team.name.trim().toLowerCase() === userTeam) return true;
+    }
+
+    const reg = (registrations || []).find(
+      r => (r.tournament_id === tournament?.id || !r.tournament_id) && Number(r.slot_number) === Number(s.slot_number)
+    );
+    if (reg) {
+      if (user?.id && reg.captain_user_id === user.id) return true;
+      if (userUid && reg.captain_uid && reg.captain_uid.trim() === userUid) return true;
+      if (userPhone && reg.captain_phone && cleanDigits(reg.captain_phone) === userPhone) return true;
+      if (userTeam && reg.team_name && reg.team_name.trim().toLowerCase() === userTeam) return true;
+    }
+
+    try {
+      const stored = sessionStorage.getItem(`panthers_confirmed_slot_${tournament?.id}`);
+      if (stored && Number(stored) === Number(s.slot_number)) return true;
+    } catch {}
+
+    return false;
+  });
 
   // Form state
   const [formData, setFormData] = useState({
@@ -500,6 +537,10 @@ export const BookingModal = ({
   const handleNextToPayment = (e) => {
     e.preventDefault();
     setError('');
+    if (existingSlot) {
+      setError(`1 Slot Per Person Policy: You already secured Slot #${String(existingSlot.slot_number).padStart(2, '0')}. Multiple slots are not permitted.`);
+      return;
+    }
     if (!formData.teamName.trim()) { setError('Please enter your Clan / Team Name.'); return; }
     if (!formData.teamTag.trim()) { setError('Please enter a Clan Tag (2-5 chars).'); return; }
     if (!formData.captainName.trim()) { setError('Captain In-Game Name is required.'); return; }
@@ -517,6 +558,10 @@ export const BookingModal = ({
   const handleNextToConfirm = (e) => {
     e.preventDefault();
     setError('');
+    if (existingSlot) {
+      setError(`1 Slot Per Person Policy: You already secured Slot #${String(existingSlot.slot_number).padStart(2, '0')}.`);
+      return;
+    }
     if (!utr.trim() || utr.length < 10) {
       setError('Please enter your valid 10-12 digit UTR / Transaction Reference Number.');
       return;
@@ -528,6 +573,10 @@ export const BookingModal = ({
   const handleFinalSubmit = async (e) => {
     e.preventDefault();
     if (submittingRef.current || isSubmitting) return;
+    if (existingSlot) {
+      setError(`1 Slot Per Person Policy: You already secured Slot #${String(existingSlot.slot_number).padStart(2, '0')}.`);
+      return;
+    }
     submittingRef.current = true;
     setIsSubmitting(true);
     setError('');
@@ -578,6 +627,8 @@ export const BookingModal = ({
         captainName: registrationData.captain_name,
         roster: squadRoster,
         utr: utr.trim(),
+        teamId: result.team_id || registrationData.team_id,
+        registeredTeamId: result.team_id || registrationData.team_id,
       });
 
       onClose();
@@ -650,6 +701,21 @@ export const BookingModal = ({
     >
       <StepBar step={step} />
 
+      {existingSlot && (
+        <div className="bg-red-950/80 border-2 border-red-500/80 p-4 rounded clip-hud-sm flex items-start gap-3 text-red-200 mb-4 animate-in fade-in">
+          <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <span className="font-orbitron font-bold text-xs uppercase text-red-300 block">
+              1 Slot Per Player Strictly Enforced
+            </span>
+            <p className="text-xs font-rajdhani leading-relaxed">
+              You have already secured <strong>Slot #{String(existingSlot.slot_number).padStart(2, '0')}</strong> in this tournament.
+              Each player/team is limited to exactly 1 slot to keep the tournament fair.
+            </p>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="bg-red-950/80 border border-red-500/80 p-3 rounded clip-hud-sm flex items-start gap-3 text-red-300 text-xs mb-4">
           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-400" />
@@ -663,8 +729,14 @@ export const BookingModal = ({
           <TeamDetailsStep data={formData} onChange={handleChange} user={user} />
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-panther-800">
             <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button type="submit" variant="primary" icon={ArrowRight} className="min-w-[180px]">
-              Next: Pay ₹{tournament?.entry_fee || 50}
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={Boolean(existingSlot)}
+              icon={ArrowRight}
+              className="min-w-[180px]"
+            >
+              {existingSlot ? `Slot #${existingSlot.slot_number} Already Held` : `Next: Pay ₹${tournament?.entry_fee || 50}`}
             </Button>
           </div>
         </form>
@@ -703,7 +775,7 @@ export const BookingModal = ({
             <Button
               type="submit"
               variant="primary"
-              disabled={isSubmitting}
+              disabled={isSubmitting || Boolean(existingSlot)}
               className="min-w-[200px] justify-center"
             >
               {isSubmitting ? (

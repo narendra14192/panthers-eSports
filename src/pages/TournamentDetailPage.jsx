@@ -11,8 +11,8 @@ import { formatCurrency } from '../lib/scoring';
 import { Calendar, Clock, MapPin, Trophy, Shield, Key, ArrowLeft, Users, AlertCircle, Share2, Lock } from 'lucide-react';
 
 export const TournamentDetailPage = ({ tournamentId, onBack, onNavigate }) => {
-  const { tournaments, getTournamentSlots, getTournamentLeaderboard } = useTournaments();
-  const { user } = useAuth();
+  const { tournaments, getTournamentSlots, getTournamentLeaderboard, getTeamById, teams, registrations } = useTournaments();
+  const { user, updateProfile } = useAuth();
 
   const tournament = tournaments.find(t => t.id === tournamentId);
 
@@ -34,7 +34,71 @@ export const TournamentDetailPage = ({ tournamentId, onBack, onNavigate }) => {
   }
 
   const slots = getTournamentSlots(tournament.id);
-  const mySlot = slots.find(s => s.team_id && s.team_id === user?.team_id);
+
+  // Comprehensive player slot detection
+  const cleanDigits = p => String(p || '').replace(/\D/g, '').slice(-10);
+  const userPhone = cleanDigits(user?.phone);
+  const userUid = String(user?.free_fire_uid || '').trim();
+  const userTeam = String(user?.team_name || '').trim().toLowerCase();
+
+  const mySlot = slots.find(s => {
+    if (s.status === 'open' || !s.team_id) return false;
+    if (user?.team_id && s.team_id === user.team_id) return true;
+
+    const team = getTeamById(s.team_id);
+    if (team) {
+      if (user?.id && team.captain_user_id === user.id) return true;
+      if (userUid && team.captain_uid && team.captain_uid.trim() === userUid) return true;
+      if (userPhone && team.captain_phone && cleanDigits(team.captain_phone) === userPhone) return true;
+      if (userTeam && team.name && team.name.trim().toLowerCase() === userTeam) return true;
+    }
+
+    const reg = (registrations || []).find(
+      r => (r.tournament_id === tournament.id || !r.tournament_id) && Number(r.slot_number) === Number(s.slot_number)
+    );
+    if (reg) {
+      if (user?.id && reg.captain_user_id === user.id) return true;
+      if (userUid && reg.captain_uid && reg.captain_uid.trim() === userUid) return true;
+      if (userPhone && reg.captain_phone && cleanDigits(reg.captain_phone) === userPhone) return true;
+      if (userTeam && reg.team_name && reg.team_name.trim().toLowerCase() === userTeam) return true;
+    }
+
+    try {
+      const stored = sessionStorage.getItem(`panthers_confirmed_slot_${tournament.id}`);
+      if (stored && Number(stored) === Number(s.slot_number)) return true;
+    } catch {}
+
+    return false;
+  });
+
+  const myTeam = mySlot ? getTeamById(mySlot.team_id) : null;
+  const myReg = (registrations || []).find(
+    r => (r.tournament_id === tournament.id || !r.tournament_id) && mySlot && Number(r.slot_number) === Number(mySlot.slot_number)
+  );
+
+  // Restore stored booking details if available
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(`panthers_confirmed_booking_${tournament.id}`);
+      if (stored && !confirmedBooking) {
+        setConfirmedBooking(JSON.parse(stored));
+      }
+    } catch {}
+  }, [tournament.id]);
+
+  const effectiveBookingDetails = confirmedBooking || (mySlot ? {
+    slotNumber: mySlot.slot_number,
+    tournament,
+    teamName: myTeam?.name || myReg?.team_name || user?.team_name || 'Your Squad',
+    teamTag: myTeam?.tag || myReg?.team_tag || user?.team_tag || 'PNTR',
+    captainName: myTeam?.captain_name || myReg?.captain_name || user?.in_game_name || 'Captain',
+    roster: myTeam?.players || myReg?.players || [
+      { name: user?.in_game_name || 'Captain', uid: user?.free_fire_uid || '', role: 'Captain / IGL' }
+    ],
+    utr: myReg?.payment?.utr || myTeam?.payment?.utr || (typeof window !== 'undefined' ? sessionStorage.getItem(`panthers_utr_${tournament.id}`) : '') || 'Verified',
+    teamId: mySlot.team_id
+  } : null);
+
   const tournamentStandings = getTournamentLeaderboard(tournament.id);
 
   // Resume pending slot selection after login
@@ -46,13 +110,17 @@ export const TournamentDetailPage = ({ tournamentId, onBack, onNavigate }) => {
           const { tournamentId: pendingTourneyId, slotNumber } = JSON.parse(pendingRaw);
           if (pendingTourneyId === tournament.id) {
             sessionStorage.removeItem('panthers_pending_slot');
-            setSelectedSlotNumber(slotNumber);
-            setIsBookingModalOpen(true);
+            if (mySlot) {
+              alert(`You already secured Slot #${String(mySlot.slot_number).padStart(2, '0')} for this tournament (1 slot per person limit).`);
+            } else {
+              setSelectedSlotNumber(slotNumber);
+              setIsBookingModalOpen(true);
+            }
           }
         }
       } catch { /* ignore */ }
     }
-  }, [user, tournament]);
+  }, [user, tournament, mySlot]);
 
   const handleSelectSlot = (slotNumber) => {
     if (!user) {
@@ -64,12 +132,34 @@ export const TournamentDetailPage = ({ tournamentId, onBack, onNavigate }) => {
       onNavigate?.('login');
       return;
     }
+    if (mySlot) {
+      alert(`Only 1 slot per player is allowed! You have already secured Slot #${String(mySlot.slot_number).padStart(2, '0')} for this tournament.`);
+      return;
+    }
     setSelectedSlotNumber(slotNumber);
     setIsBookingModalOpen(true);
   };
 
   const handleBookingSuccess = (bookingDetails) => {
     setConfirmedBooking(bookingDetails);
+    try {
+      sessionStorage.setItem(`panthers_confirmed_slot_${tournament.id}`, String(bookingDetails.slotNumber));
+      sessionStorage.setItem(`panthers_confirmed_booking_${tournament.id}`, JSON.stringify(bookingDetails));
+      if (bookingDetails.utr) {
+        sessionStorage.setItem(`panthers_utr_${tournament.id}`, bookingDetails.utr);
+      }
+    } catch {}
+
+    if (bookingDetails.teamId || bookingDetails.registeredTeamId) {
+      try {
+        updateProfile?.({
+          team_id: bookingDetails.teamId || bookingDetails.registeredTeamId,
+          team_name: bookingDetails.teamName,
+          team_tag: bookingDetails.teamTag
+        });
+      } catch {}
+    }
+
     setIsConfirmationOpen(true);
   };
 
@@ -245,6 +335,56 @@ export const TournamentDetailPage = ({ tournamentId, onBack, onNavigate }) => {
         </div>
       )}
 
+      {/* Persistent Confirmed Slot Banner // 1 Slot Per Person */}
+      {mySlot && (
+        <div className="bg-gradient-to-r from-amber-950/80 via-panther-900 to-amber-950/80 border-2 border-amber-gold p-5 rounded clip-hud shadow-gold-glow flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in">
+          <div className="flex items-start sm:items-center gap-4">
+            <div className="w-14 h-14 rounded bg-amber-gold/20 border-2 border-amber-gold flex flex-col items-center justify-center text-amber-gold flex-shrink-0 shadow-lg shadow-amber-900/40">
+              <span className="text-[9px] font-rajdhani uppercase font-extrabold text-amber-300 leading-none">SLOT</span>
+              <span className="text-xl sm:text-2xl font-orbitron font-black leading-tight text-white">
+                #{String(mySlot.slot_number).padStart(2, '0')}
+              </span>
+            </div>
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-orbitron font-black text-amber-gold text-base sm:text-lg uppercase tracking-wider">
+                  Your Squad Slot #{String(mySlot.slot_number).padStart(2, '0')} Is Secured
+                </span>
+                <span className="bg-amber-gold text-panther-950 text-[10px] font-orbitron font-black px-2 py-0.5 rounded uppercase">
+                  Confirmed
+                </span>
+                <span className="bg-panther-950 text-gray-300 border border-panther-700 text-[10px] font-rajdhani font-bold px-2 py-0.5 rounded uppercase">
+                  1 Slot Per Player Limit
+                </span>
+              </div>
+              <p className="text-xs text-gray-300 font-rajdhani">
+                Registered Squad: <strong className="text-white">[{myTeam?.tag || myReg?.team_tag || user?.team_tag || 'PNTR'}] {myTeam?.name || myReg?.team_name || user?.team_name || 'Your Squad'}</strong>
+                {' · '}Captain: <span className="text-amber-200">{myTeam?.captain_name || myReg?.captain_name || user?.in_game_name} (UID: {myTeam?.captain_uid || myReg?.captain_uid || user?.free_fire_uid})</span>
+              </p>
+              {(myReg?.payment?.utr || effectiveBookingDetails?.utr) && (
+                <div className="flex items-center gap-2 text-[11px] font-mono text-emerald-400">
+                  <span>UTR: {myReg?.payment?.utr || effectiveBookingDetails?.utr}</span>
+                  <span className="text-gray-400">·</span>
+                  <span className="text-yellow-400 font-rajdhani font-semibold">Payment in Verification</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={() => setIsConfirmationOpen(true)}
+              icon={Shield}
+            >
+              View Match Pass
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Navigation Tabs (Slots / Standings / Rules) */}
       <div className="flex items-center gap-2 border-b border-panther-800 pb-2 text-sm font-rajdhani font-bold uppercase tracking-wider">
         <button
@@ -367,7 +507,7 @@ export const TournamentDetailPage = ({ tournamentId, onBack, onNavigate }) => {
       <BookingConfirmationModal
         isOpen={isConfirmationOpen}
         onClose={() => setIsConfirmationOpen(false)}
-        bookingDetails={confirmedBooking}
+        bookingDetails={effectiveBookingDetails}
         onGoToBookings={() => onNavigate('my-bookings')}
       />
     </div>

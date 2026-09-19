@@ -7,10 +7,43 @@ import { Calendar, Clock, MapPin, Key, Shield, User, Download, Swords, ExternalL
 
 export const MyBookingsPage = ({ onNavigate, onSelectTournament }) => {
   const { user } = useAuth();
-  const { tournaments, slots, teams } = useTournaments();
+  const { tournaments, slots, teams, registrations, getTeamById } = useTournaments();
 
-  // Find all slots booked by user's team or user id
-  const mySlots = slots.filter(s => s.team_id && (s.team_id === user?.team_id));
+  // Comprehensive detection of all slots booked by user
+  const cleanDigits = p => String(p || '').replace(/\D/g, '').slice(-10);
+  const userPhone = cleanDigits(user?.phone);
+  const userUid = String(user?.free_fire_uid || '').trim();
+  const userTeam = String(user?.team_name || '').trim().toLowerCase();
+
+  const mySlots = slots.filter(s => {
+    if (s.status === 'open' || !s.team_id) return false;
+    if (user?.team_id && s.team_id === user.team_id) return true;
+
+    const team = (teams || []).find(t => t.id === s.team_id) || (getTeamById && getTeamById(s.team_id));
+    if (team) {
+      if (user?.id && team.captain_user_id === user.id) return true;
+      if (userUid && team.captain_uid && team.captain_uid.trim() === userUid) return true;
+      if (userPhone && team.captain_phone && cleanDigits(team.captain_phone) === userPhone) return true;
+      if (userTeam && team.name && team.name.trim().toLowerCase() === userTeam) return true;
+    }
+
+    const reg = (registrations || []).find(
+      r => (r.tournament_id === s.tournament_id || !r.tournament_id) && Number(r.slot_number) === Number(s.slot_number)
+    );
+    if (reg) {
+      if (user?.id && reg.captain_user_id === user.id) return true;
+      if (userUid && reg.captain_uid && reg.captain_uid.trim() === userUid) return true;
+      if (userPhone && reg.captain_phone && cleanDigits(reg.captain_phone) === userPhone) return true;
+      if (userTeam && reg.team_name && reg.team_name.trim().toLowerCase() === userTeam) return true;
+    }
+
+    try {
+      const stored = sessionStorage.getItem(`panthers_confirmed_slot_${s.tournament_id}`);
+      if (stored && Number(stored) === Number(s.slot_number)) return true;
+    } catch {}
+
+    return false;
+  });
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -57,7 +90,7 @@ export const MyBookingsPage = ({ onNavigate, onSelectTournament }) => {
         <div className="space-y-6">
           {mySlots.map(slot => {
             const tournament = tournaments.find(t => t.id === slot.tournament_id);
-            const team = teams.find(t => t.id === slot.team_id);
+            const team = (teams || []).find(t => t.id === slot.team_id) || (getTeamById && getTeamById(slot.team_id));
             if (!tournament) return null;
 
             return (
