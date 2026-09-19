@@ -235,7 +235,59 @@ export const AdminPortal = ({ onExitToPublic }) => {
   const occupancyPercent = Math.round((bookedSlots.length / totalSlotsCount) * 100);
   const entryFee = activeTournament.entry_fee || 50;
   const totalRevenueCollected = bookedSlots.length * entryFee;
-  const totalPotentialRevenue = totalSlotsCount * entryFee;
+  // ── Unified Registrations & Approvals (Merged across Firebase & context slots) ──
+  const allRegistrationsMap = new Map();
+
+  (registrations || []).forEach(reg => {
+    allRegistrationsMap.set(reg.id, {
+      ...reg,
+      slot_number: reg.slot_number,
+      team_name: reg.team_name,
+      team_tag: reg.team_tag,
+      captain_phone: reg.captain_phone,
+      captain_uid: reg.captain_uid,
+      utr: reg.payment?.utr || reg.utr,
+      amount: reg.payment?.amount || activeTournament?.entry_fee || 50,
+      status: reg.status || 'pending',
+      created_at: reg.created_at || new Date().toISOString()
+    });
+  });
+
+  tourneySlots.forEach(slot => {
+    if (slot.status === 'open') return;
+    const team = slot.virtualTeam || (slot.team_id ? getTeamById(slot.team_id) : null);
+    if (!team) return;
+
+    const existing = Array.from(allRegistrationsMap.values()).find(
+      r => Number(r.slot_number) === Number(slot.slot_number) || r.team_id === slot.team_id
+    );
+
+    if (!existing) {
+      const syntheticId = `slot-reg-${slot.id || slot.slot_number}`;
+      allRegistrationsMap.set(syntheticId, {
+        id: syntheticId,
+        slot_number: slot.slot_number,
+        team_id: team.id,
+        team_name: team.name,
+        team_tag: team.tag,
+        captain_phone: team.captain_phone || '—',
+        captain_uid: team.captain_uid || '—',
+        utr: slot.registration?.payment?.utr || slot.registration?.utr || team.payment?.utr || 'Pending UTR',
+        amount: team.payment?.amount || activeTournament?.entry_fee || 50,
+        status: (team.payment?.status === 'verified' || slot.status === 'checked_in') ? 'accepted' : 'pending',
+        created_at: slot.booked_at || new Date().toISOString()
+      });
+    }
+  });
+
+  const allRegistrations = Array.from(allRegistrationsMap.values()).sort(
+    (a, b) => new Date(b.created_at) - new Date(a.created_at)
+  );
+
+  const pendingApprovalsCount = allRegistrations.filter(r => {
+    const isThisTourney = !r.tournament_id || !activeTournament?.id || r.tournament_id === activeTournament.id;
+    return isThisTourney && (r.status === 'pending' || r.status === 'pending_verification' || r.payment?.status === 'pending_verification');
+  }).length;
 
   // Initialize scoring table with booked squads
   useEffect(() => {
@@ -610,8 +662,8 @@ _Panthers Esports Official Operations_`;
               id: 'payments', 
               label: 'UTR & Approvals', 
               icon: IndianRupee, 
-              count: (registrations || []).filter(r => (r.tournament_id === activeTournament.id || !r.tournament_id) && (r.status === 'pending' || r.payment?.status === 'pending_verification')).length,
-              alert: (registrations || []).filter(r => (r.tournament_id === activeTournament.id || !r.tournament_id) && (r.status === 'pending' || r.payment?.status === 'pending_verification')).length > 0 
+              count: pendingApprovalsCount,
+              alert: pendingApprovalsCount > 0 
             },
             { id: 'room', label: 'Custom Room Dispatch', icon: Key, active: Boolean(roomId) },
             { id: 'scoring', label: '3-Match Scoring', icon: Trophy },
@@ -1837,52 +1889,6 @@ _Panthers Esports Official Operations_`;
           {/* 5. UTR PAYMENT VERIFICATION & REGISTRATION APPROVAL CONSOLE (FIREBASE)    */}
           {/* ========================================================================= */}
           {activeSection === 'payments' && (() => {
-            // Build merged list of Firebase registrations + any booked slots
-            const allRegistrationsMap = new Map();
-
-            // 1. Add all registrations from Firebase Firestore
-            (registrations || []).forEach(reg => {
-              allRegistrationsMap.set(reg.id, {
-                ...reg,
-                slot_number: reg.slot_number,
-                team_name: reg.team_name,
-                team_tag: reg.team_tag,
-                captain_phone: reg.captain_phone,
-                captain_uid: reg.captain_uid,
-                utr: reg.payment?.utr || reg.utr,
-                amount: reg.payment?.amount || activeTournament.entry_fee || 50,
-                status: reg.status || 'pending',
-                created_at: reg.created_at || new Date().toISOString()
-              });
-            });
-
-            // 2. Also incorporate any booked slots in context if not yet in Firebase
-            bookedSlots.forEach(slot => {
-              const team = getTeamById(slot.team_id);
-              const existing = Array.from(allRegistrationsMap.values()).find(
-                r => r.slot_number === slot.slot_number || r.team_id === slot.team_id
-              );
-              if (!existing && team) {
-                const syntheticId = `slot-reg-${slot.id}`;
-                allRegistrationsMap.set(syntheticId, {
-                  id: syntheticId,
-                  slot_number: slot.slot_number,
-                  team_id: team.id,
-                  team_name: team.name,
-                  team_tag: team.tag,
-                  captain_phone: team.captain_phone || '—',
-                  captain_uid: team.captain_uid || '—',
-                  utr: team.payment?.utr || 'SAMPLE' + slot.slot_number + '987',
-                  amount: team.payment?.amount || activeTournament.entry_fee || 50,
-                  status: team.payment?.status === 'verified' ? 'accepted' : 'pending',
-                  created_at: slot.booked_at || new Date().toISOString()
-                });
-              }
-            });
-
-            const allRegistrations = Array.from(allRegistrationsMap.values()).sort(
-              (a, b) => new Date(b.created_at) - new Date(a.created_at)
-            );
 
             // Filter
             const filteredRegs = allRegistrations.filter(r => {

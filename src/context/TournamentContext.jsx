@@ -22,6 +22,7 @@ import {
   subscribeToRegistrations,
   saveRegistrationToFirebase,
   updateRegistrationStatusInFirebase,
+  getLocalRegistrations,
 } from '../lib/firebaseRegistration';
 
 const TournamentContext = createContext(null);
@@ -63,7 +64,7 @@ export const TournamentProvider = ({ children }) => {
   const [matches, setMatches] = useState(() =>
     readLS(CACHE.MATCHES, readLS(LS_KEYS.MATCHES, []))
   );
-  const [registrations, setRegistrations] = useState([]);
+  const [registrations, setRegistrations] = useState(() => getLocalRegistrations());
   const [announcement, setAnnouncement] = useState(() =>
     readLS(CACHE.ANNOUNCEMENT, {
       text: '🔥 Panthers Free Fire Tri-Map Series — 12 Slots Open for Registration!',
@@ -462,13 +463,16 @@ export const TournamentProvider = ({ children }) => {
       // Save full registration (UTR) to Firebase
       const targetTourney = tournaments.find(t => t.id === tournamentId);
       try {
-        await saveRegistrationToFirebase({
+        const regRes = await saveRegistrationToFirebase({
           ...teamRegistrationData,
           tournament_id: tournamentId,
           tournament_name: targetTourney?.name || 'Panthers Free Fire Tri-Map Series',
           slot_number: slotNumber,
           team_id: registeredTeamId,
         });
+        if (regRes?.registration) {
+          setRegistrations(prev => [regRes.registration, ...prev.filter(r => r.id !== regRes.registration.id)]);
+        }
       } catch (err) {
         console.warn('[TournamentContext] saveRegistrationToFirebase note:', err.message);
       }
@@ -613,14 +617,51 @@ export const TournamentProvider = ({ children }) => {
   // FIREBASE REGISTRATION & PAYMENT APPROVALS
   // ==========================================
   const approveRegistration = async (registrationId, adminName = 'PantherAdmin') => {
-    const reg = registrations.find(r => r.id === registrationId);
+    let reg = registrations.find(r => r.id === registrationId);
+
+    // Fallback: match by synthetic ID or slot number
+    if (!reg) {
+      const matchedSlot = slots.find(
+        s => `slot-reg-${s.id}` === registrationId || `slot-reg-${s.slot_number}` === registrationId || s.id === registrationId
+      );
+      if (matchedSlot) {
+        const team = teams.find(t => t.id === matchedSlot.team_id);
+        reg = {
+          id: registrationId,
+          slot_number: matchedSlot.slot_number,
+          tournament_id: matchedSlot.tournament_id,
+          team_id: matchedSlot.team_id,
+          team_name: team?.name || 'Team',
+          team_tag: team?.tag || 'TEAM',
+          payment: team?.payment || { status: 'pending_verification' }
+        };
+      }
+    }
+
     if (!reg) return { success: false, error: 'Registration not found.' };
 
-    await updateRegistrationStatusInFirebase(registrationId, 'accepted', 'Verified by Admin', adminName);
+    try {
+      await updateRegistrationStatusInFirebase(registrationId, 'accepted', 'Verified by Admin', adminName);
+    } catch (e) {
+      console.warn('Firebase status update note:', e.message);
+    }
+
+    // Update local registrations state immediately
+    setRegistrations(prev => {
+      const exists = prev.some(r => r.id === reg.id || r.slot_number === reg.slot_number);
+      if (exists) {
+        return prev.map(r => (r.id === reg.id || r.slot_number === reg.slot_number) ? {
+          ...r,
+          status: 'accepted',
+          payment: { ...(r.payment || {}), status: 'verified' }
+        } : r);
+      }
+      return [{ ...reg, status: 'accepted', payment: { ...(reg.payment || {}), status: 'verified' } }, ...prev];
+    });
 
     setSlots(prev => {
       const updated = prev.map(s => {
-        if (s.tournament_id === reg.tournament_id && s.slot_number === reg.slot_number) {
+        if ((reg.tournament_id ? s.tournament_id === reg.tournament_id : true) && Number(s.slot_number) === Number(reg.slot_number)) {
           const approved = { ...s, team_id: reg.team_id, status: 'booked', payment_status: 'verified' };
           saveSlot(approved);
           return approved;
@@ -664,14 +705,43 @@ export const TournamentProvider = ({ children }) => {
   };
 
   const rejectRegistration = async (registrationId, reason = 'UTR verification failed', adminName = 'PantherAdmin') => {
-    const reg = registrations.find(r => r.id === registrationId);
+    let reg = registrations.find(r => r.id === registrationId);
+
+    if (!reg) {
+      const matchedSlot = slots.find(
+        s => `slot-reg-${s.id}` === registrationId || `slot-reg-${s.slot_number}` === registrationId || s.id === registrationId
+      );
+      if (matchedSlot) {
+        const team = teams.find(t => t.id === matchedSlot.team_id);
+        reg = {
+          id: registrationId,
+          slot_number: matchedSlot.slot_number,
+          tournament_id: matchedSlot.tournament_id,
+          team_id: matchedSlot.team_id,
+          team_name: team?.name || 'Team',
+          team_tag: team?.tag || 'TEAM',
+        };
+      }
+    }
+
     if (!reg) return { success: false, error: 'Registration not found.' };
 
-    await updateRegistrationStatusInFirebase(registrationId, 'rejected', reason, adminName);
+    try {
+      await updateRegistrationStatusInFirebase(registrationId, 'rejected', reason, adminName);
+    } catch (e) {
+      console.warn('Firebase status update note:', e.message);
+    }
+
+    setRegistrations(prev => prev.map(r => (r.id === reg.id || r.slot_number === reg.slot_number) ? {
+      ...r,
+      status: 'rejected',
+      payment: { ...(r.payment || {}), status: 'rejected' },
+      admin_notes: reason
+    } : r));
 
     setSlots(prev => {
       const updated = prev.map(s => {
-        if (s.tournament_id === reg.tournament_id && s.slot_number === reg.slot_number) {
+        if ((reg.tournament_id ? s.tournament_id === reg.tournament_id : true) && Number(s.slot_number) === Number(reg.slot_number)) {
           const freed = { ...s, team_id: null, status: 'open', booked_at: null };
           saveSlot(freed);
           return freed;

@@ -10,13 +10,13 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-// ─── UPI Config (update with real UPI ID / QR) ───────────────────────────────
+// ─── UPI Config ──────────────────────────────────────────────────────────────
 const UPI_CONFIG = {
-  upiId: 'panthersesports@upi',      // ← Replace with your real UPI ID
+  upiId: 'narendrabk@fam',
   name: 'Panthers Esports',
   amount: 50,
   note: 'Panthers Tri-Map Entry Fee',
-  qrImage: '/upi-qr.jpg',            // ← Replace with your real QR image in /public
+  qrImage: '/upi-qr.png',
 };
 
 // ─── Step indicator ──────────────────────────────────────────────────────────
@@ -260,31 +260,42 @@ function PaymentStep({ slotNumber, tournament, utrValue, onUtrChange, copied, on
           </span>
 
           {/* QR Image */}
-          <div className="relative w-44 h-44 rounded-lg overflow-hidden border-2 border-flame-500/60 shadow-flame-sm">
+          <div className="relative w-48 h-48 rounded-lg overflow-hidden border-2 border-flame-500/60 shadow-flame-sm bg-panther-950 p-1 flex items-center justify-center">
             <img
               src={UPI_CONFIG.qrImage}
               alt="UPI QR Code"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain rounded"
               onError={e => {
-                // fallback to a generated QR via Google Charts API
-                e.target.src = `https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=upi://pay?pa=${UPI_CONFIG.upiId}%26pn=${encodeURIComponent(UPI_CONFIG.name)}%26am=${UPI_CONFIG.amount}%26cu=INR%26tn=${encodeURIComponent(UPI_CONFIG.note)}&choe=UTF-8`;
+                // fallback to a generated QR via qrserver API
+                e.target.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`upi://pay?pa=${UPI_CONFIG.upiId}&pn=${encodeURIComponent(UPI_CONFIG.name)}&am=${tournament?.entry_fee || UPI_CONFIG.amount}&cu=INR&tn=${encodeURIComponent(`Slot ${slotNumber} - ${tournament?.title || 'Panthers'}`)}`)}`;
               }}
             />
             {/* Overlay corner accents */}
-            <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-flame-400" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-flame-400" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-flame-400" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-flame-400" />
+            <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-flame-400 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-flame-400 pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-flame-400 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-flame-400 pointer-events-none" />
           </div>
 
           {/* App icons */}
-          <div className="flex items-center gap-3 text-[10px] font-rajdhani font-bold text-gray-400 uppercase tracking-wider">
+          <div className="flex items-center gap-2.5 text-[10px] font-rajdhani font-bold text-gray-400 uppercase tracking-wider">
             <span className="flex items-center gap-1"><Smartphone className="w-3 h-3 text-indigo-400" />PhonePe</span>
             <span>·</span>
             <span className="flex items-center gap-1"><Smartphone className="w-3 h-3 text-green-400" />GPay</span>
             <span>·</span>
             <span className="flex items-center gap-1"><Smartphone className="w-3 h-3 text-sky-400" />Paytm</span>
+            <span>·</span>
+            <span className="text-amber-400 font-bold">FamPay</span>
           </div>
+
+          {/* Direct UPI pay link for mobile users */}
+          <a
+            href={`upi://pay?pa=${UPI_CONFIG.upiId}&pn=${encodeURIComponent(UPI_CONFIG.name)}&am=${tournament?.entry_fee || UPI_CONFIG.amount}&cu=INR&tn=${encodeURIComponent(`Slot ${slotNumber} - ${tournament?.title || 'Panthers'}`)}`}
+            className="w-full text-center py-2 px-3 bg-panther-800 hover:bg-flame-600 border border-panther-700 hover:border-flame-500 text-gray-200 hover:text-white font-rajdhani font-bold text-xs uppercase tracking-wider rounded transition-all flex items-center justify-center gap-1.5"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-flame-400" />
+            Pay via UPI App Directly
+          </a>
         </div>
 
         {/* UPI ID & Instructions */}
